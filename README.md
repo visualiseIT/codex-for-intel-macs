@@ -68,4 +68,5 @@ Unsigned `.dmg` and `.zip` artifacts are written to `release/`. macOS may requir
 - The App Server surface is still evolving. The protocol adapter is intentionally isolated in `src/main/` so it can be updated without rewriting the UI.
 - Distribution signing and the minimum macOS version ultimately depend on the selected Electron release and your signing setup.
 
-See [PLAN.md](./PLAN.md) for the implementation checklist and deferred scope.
+See [PLAN.md](./PLAN.md) for the completed MVP checklist and
+[PLAN_V0.2.md](./PLAN_V0.2.md) for the next release roadmap.
