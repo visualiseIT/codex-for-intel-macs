@@ -1,4 +1,9 @@
-import type { ChatItem, ThreadSummary, UiEvent } from "../shared/types";
+import type {
+  ChatItem,
+  FileChange,
+  ThreadSummary,
+  UiEvent,
+} from "../shared/types";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -36,16 +41,18 @@ function userText(content: unknown): string {
     .join("\n");
 }
 
-function formatChanges(changes: unknown): string {
-  if (!Array.isArray(changes)) return "File changes proposed";
-  return changes
-    .map((change) => {
-      const value = record(change);
-      const path = string(value.path, string(value.filePath, "Unknown file"));
-      const kind = string(value.kind, string(value.type, "changed"));
-      return `${kind}: ${path}`;
-    })
-    .join("\n");
+function normalizeChanges(changes: unknown): FileChange[] {
+  if (!Array.isArray(changes)) return [];
+  return changes.map((change) => {
+    const value = record(change);
+    const path = string(value.path, string(value.filePath, "Unknown file"));
+    const kindValue = record(value.kind);
+    const kind = string(
+      kindValue.type,
+      string(value.kind, string(value.type, "changed")),
+    );
+    return { path, kind, diff: string(value.diff) };
+  });
 }
 
 export function normalizeThread(value: unknown): ThreadSummary {
@@ -89,14 +96,20 @@ export function normalizeItem(value: unknown): ChatItem {
         text: string(item.aggregatedOutput),
         status: statusText(item.status),
       };
-    case "fileChange":
+    case "fileChange": {
+      const changes = normalizeChanges(item.changes);
       return {
         id,
         kind: "file",
-        title: "File changes",
-        text: formatChanges(item.changes),
+        title:
+          `${changes.length || ""} file change${changes.length === 1 ? "" : "s"}`.trim(),
+        text: changes
+          .map((change) => `${change.kind}: ${change.path}`)
+          .join("\n"),
         status: statusText(item.status),
+        changes,
       };
+    }
     case "mcpToolCall":
       return {
         id,
@@ -175,6 +188,22 @@ export function normalizeNotification(
     };
   }
 
+  if (method === "item/fileChange/patchUpdated") {
+    const item = normalizeItem({
+      id: string(params.itemId),
+      type: "fileChange",
+      changes: params.changes,
+      status: "inProgress",
+    });
+    return {
+      type: "item",
+      phase: "started",
+      threadId,
+      turnId,
+      item,
+    };
+  }
+
   if (method === "turn/started" || method === "turn/completed") {
     const error = record(turn.error);
     return {
@@ -187,11 +216,25 @@ export function normalizeNotification(
     };
   }
 
-  if (method === "thread/name/updated" || method === "thread/started") {
+  if (
+    method === "thread/name/updated" ||
+    method === "thread/started" ||
+    method === "thread/archived" ||
+    method === "thread/unarchived" ||
+    method === "thread/deleted"
+  ) {
     const thread = record(params.thread);
+    const action = method.endsWith("/archived")
+      ? "archived"
+      : method.endsWith("/unarchived")
+        ? "unarchived"
+        : method.endsWith("/deleted")
+          ? "deleted"
+          : "changed";
     return {
       type: "thread-changed",
       threadId: string(params.threadId, string(thread.id)),
+      action,
     };
   }
 

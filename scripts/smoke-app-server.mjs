@@ -10,12 +10,15 @@ let buffer = "";
 let stderr = "";
 let finished = false;
 let threadCount = 0;
+let archivedCount = 0;
+let modelCount = 0;
+let usageAvailable = false;
 
 function send(message) {
   child.stdin.write(`${JSON.stringify(message)}\n`);
 }
 
-function finish(error, modelCount = 0) {
+function finish(error) {
   if (finished) return;
   finished = true;
   clearTimeout(timeout);
@@ -25,7 +28,7 @@ function finish(error, modelCount = 0) {
     process.exitCode = 1;
   } else {
     console.log(
-      `App-server smoke test passed; ${threadCount} thread(s) and ${modelCount} model(s) visible.`,
+      `App-server smoke test passed; ${threadCount} active thread(s), ${archivedCount} archived thread(s), ${modelCount} model(s), usage ${usageAvailable ? "available" : "unavailable"}.`,
     );
   }
 }
@@ -72,7 +75,7 @@ child.stdout.on("data", (chunk) => {
         },
       });
     }
-    if ((message.id === 2 || message.id === 3) && message.error) {
+    if (message.id >= 2 && message.id <= 4 && message.error) {
       finish(new Error(message.error.message || "Thread listing failed"));
       return;
     }
@@ -86,11 +89,31 @@ child.stdout.on("data", (chunk) => {
         params: { limit: 100, includeHidden: false },
       });
     }
-    if (message.id === 3)
-      finish(
-        null,
-        Array.isArray(message.result?.data) ? message.result.data.length : 0,
-      );
+    if (message.id === 3) {
+      modelCount = Array.isArray(message.result?.data)
+        ? message.result.data.length
+        : 0;
+      send({
+        method: "thread/list",
+        id: 4,
+        params: {
+          limit: 5,
+          archived: true,
+          sortKey: "updated_at",
+          sortDirection: "desc",
+        },
+      });
+    }
+    if (message.id === 4) {
+      archivedCount = Array.isArray(message.result?.data)
+        ? message.result.data.length
+        : 0;
+      send({ method: "account/rateLimits/read", id: 5, params: {} });
+    }
+    if (message.id === 5) {
+      usageAvailable = !message.error && Boolean(message.result?.rateLimits);
+      finish(null);
+    }
   }
 });
 
@@ -101,7 +124,7 @@ send({
     clientInfo: {
       name: "codex-desktop-intel-smoke",
       title: "Codex Desktop Intel Smoke Test",
-      version: "0.1.1",
+      version: "0.2.0",
     },
     capabilities: { experimentalApi: true, requestAttestation: false },
   },

@@ -1,14 +1,18 @@
 import { EventEmitter } from "node:events";
 import type {
   CodexSettings,
+  CodexDiagnostics,
   ConnectionState,
   ModelOption,
   OpenThreadResult,
   PendingInteraction,
   StartTurnInput,
   StartTurnResult,
+  ThreadListInput,
+  ThreadPage,
   ThreadSummary,
   UiEvent,
+  UsageInfo,
   UserInputQuestion,
 } from "../shared/types";
 import { CodexProcess } from "./codex-process";
@@ -36,6 +40,39 @@ function string(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
 }
 
+function number(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+export function normalizeUsage(value: unknown): UsageInfo | null {
+  const result = record(value);
+  const buckets = record(result.rateLimitsByLimitId);
+  const bucketValues = Object.values(buckets);
+  const snapshot = record(
+    buckets.codex ?? result.rateLimits ?? bucketValues[0] ?? null,
+  );
+  if (!Object.keys(snapshot).length) return null;
+  const normalizeWindow = (windowValue: unknown) => {
+    const window = record(windowValue);
+    const usedPercent = number(window.usedPercent);
+    if (usedPercent === null) return null;
+    return {
+      usedPercent,
+      windowDurationMins: number(window.windowDurationMins),
+      resetsAt: number(window.resetsAt),
+    };
+  };
+  return {
+    label: string(snapshot.limitName, string(snapshot.limitId, "Codex")),
+    planType: typeof snapshot.planType === "string" ? snapshot.planType : null,
+    primary: normalizeWindow(snapshot.primary),
+    secondary: normalizeWindow(snapshot.secondary),
+    reached:
+      snapshot.rateLimitReachedType !== null &&
+      snapshot.rateLimitReachedType !== undefined,
+  };
+}
+
 function sandboxPolicy(settings: CodexSettings): unknown {
   if (settings.sandbox === "danger-full-access")
     return { type: "dangerFullAccess" };
@@ -60,6 +97,9 @@ export class CodexService extends EventEmitter {
     this.process.on(
       "notification",
       (message: { method: string; params?: unknown }) => {
+        if (message.method === "account/rateLimits/updated") {
+          this.emitUi({ type: "usage", usage: normalizeUsage(message.params) });
+        }
         const event = normalizeNotification(message.method, message.params);
         if (event) this.emitUi(event);
       },
@@ -87,6 +127,11 @@ export class CodexService extends EventEmitter {
     }
   }
 
+  async reconnect(): Promise<void> {
+    this.process.close();
+    await this.connect();
+  }
+
   getConnectionState(): { state: ConnectionState; message?: string } {
     return { state: this.state, message: this.stateMessage };
   }
@@ -96,16 +141,22 @@ export class CodexService extends EventEmitter {
     this.setState("disconnected");
   }
 
-  async listThreads(searchTerm?: string): Promise<ThreadSummary[]> {
+  async listThreads(input: ThreadListInput = {}): Promise<ThreadPage> {
     const result = await this.process.request<UnknownRecord>("thread/list", {
-      limit: 100,
+      limit: 50,
       sortKey: "updated_at",
       sortDirection: "desc",
       sourceKinds: ["cli", "vscode", "exec", "appServer"],
-      ...(searchTerm ? { searchTerm } : {}),
+      archived: input.archived === true,
+      ...(input.cursor ? { cursor: input.cursor } : {}),
+      ...(input.searchTerm ? { searchTerm: input.searchTerm } : {}),
     });
     const data = result.data;
-    return Array.isArray(data) ? data.map(normalizeThread) : [];
+    return {
+      threads: Array.isArray(data) ? data.map(normalizeThread) : [],
+      nextCursor:
+        typeof result.nextCursor === "string" ? result.nextCursor : null,
+    };
   }
 
   async listModels(): Promise<ModelOption[]> {
@@ -131,6 +182,9 @@ export class CodexService extends EventEmitter {
           model.defaultReasoningEffort,
           efforts[0] ?? "medium",
         ),
+        inputModalities: Array.isArray(model.inputModalities)
+          ? model.inputModalities.map((value) => string(value)).filter(Boolean)
+          : ["text", "image"],
       };
     });
   }
@@ -163,10 +217,31 @@ export class CodexService extends EventEmitter {
     return normalizeThread(result.thread);
   }
 
+  async renameThread(threadId: string, name: string): Promise<void> {
+    await this.process.request("thread/name/set", { threadId, name });
+  }
+
+  async archiveThread(threadId: string): Promise<void> {
+    await this.process.request("thread/archive", { threadId });
+  }
+
+  async unarchiveThread(threadId: string): Promise<void> {
+    await this.process.request("thread/unarchive", { threadId });
+  }
+
+  async deleteThread(threadId: string): Promise<void> {
+    await this.process.request("thread/delete", { threadId });
+  }
+
   async startTurn(input: StartTurnInput): Promise<StartTurnResult> {
     const result = await this.process.request<UnknownRecord>("turn/start", {
       threadId: input.threadId,
-      input: [{ type: "text", text: input.prompt, text_elements: [] }],
+      input: [
+        ...(input.prompt
+          ? [{ type: "text", text: input.prompt, text_elements: [] }]
+          : []),
+        ...input.imagePaths.map((path) => ({ type: "localImage", path })),
+      ],
       cwd: input.cwd,
       approvalPolicy: "on-request",
       sandboxPolicy: sandboxPolicy(input),
@@ -179,6 +254,29 @@ export class CodexService extends EventEmitter {
 
   async interruptTurn(threadId: string, turnId: string): Promise<void> {
     await this.process.request("turn/interrupt", { threadId, turnId });
+  }
+
+  async getUsage(): Promise<UsageInfo | null> {
+    try {
+      const result = await this.process.request<UnknownRecord>(
+        "account/rateLimits/read",
+      );
+      return normalizeUsage(result);
+    } catch {
+      return null;
+    }
+  }
+
+  getDiagnostics(): CodexDiagnostics {
+    const details = this.process.getDiagnostics();
+    return {
+      connection: this.state,
+      message: this.stateMessage ?? "",
+      ...details,
+      stderrTail: details.stderrTail
+        .replace(/(sk-[A-Za-z0-9_-]{8})[A-Za-z0-9_-]+/g, "$1…")
+        .replace(/(bearer\s+)[^\s]+/gi, "$1[redacted]"),
+    };
   }
 
   resolveInteraction(requestId: number | string, result: unknown): void {

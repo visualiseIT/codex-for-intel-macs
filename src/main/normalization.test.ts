@@ -85,4 +85,53 @@ describe("Codex protocol normalization", () => {
       status: "completed",
     });
   });
+
+  it("preserves structured diffs for file change rendering", () => {
+    expect(
+      normalizeItem({
+        type: "fileChange",
+        id: "change-1",
+        status: "completed",
+        changes: [
+          {
+            path: "src/app.ts",
+            kind: { type: "update", move_path: null },
+            diff: "@@ -1 +1 @@\n-old\n+new",
+          },
+        ],
+      }),
+    ).toMatchObject({
+      kind: "file",
+      title: "1 file change",
+      changes: [
+        {
+          path: "src/app.ts",
+          kind: "update",
+          diff: "@@ -1 +1 @@\n-old\n+new",
+        },
+      ],
+    });
+  });
+
+  it("maps patch and thread lifecycle notifications", () => {
+    expect(
+      normalizeNotification("item/fileChange/patchUpdated", {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "change-1",
+        changes: [{ path: "a.ts", kind: { type: "add" }, diff: "+hello" }],
+      }),
+    ).toMatchObject({
+      type: "item",
+      phase: "started",
+      item: { id: "change-1", kind: "file" },
+    });
+    expect(
+      normalizeNotification("thread/deleted", { threadId: "thread-1" }),
+    ).toEqual({
+      type: "thread-changed",
+      threadId: "thread-1",
+      action: "deleted",
+    });
+  });
 });

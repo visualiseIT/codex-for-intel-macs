@@ -1,24 +1,58 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type {
   ChatItem,
+  CodexDiagnostics,
   CodexSettings,
   ConnectionState,
+  ImageAttachment,
   ModelOption,
   PendingInteraction,
   SandboxMode,
   ThemeMode,
   ThreadSummary,
   UiEvent,
+  UsageInfo,
 } from "../../shared/types";
+import { ActivityOutput } from "./ActivityOutput";
+import {
+  DiagnosticsDialog,
+  InteractionDialog,
+  ThreadActionsDialog,
+} from "./Dialogs";
+import { DiffView } from "./DiffView";
+import { RichText } from "./RichText";
 
 const LAST_WORKSPACE_KEY = "codex-desktop:last-workspace";
 const THEME_KEY = "codex-desktop:theme";
+const PINNED_THREADS_KEY = "codex-desktop:pinned-threads";
 
 function initialTheme(): ThemeMode {
   const stored = localStorage.getItem(THEME_KEY);
   return stored === "light" || stored === "dark" || stored === "system"
     ? stored
     : "system";
+}
+
+function initialPins(): Set<string> {
+  try {
+    const value: unknown = JSON.parse(
+      localStorage.getItem(PINNED_THREADS_KEY) ?? "[]",
+    );
+    return new Set(
+      Array.isArray(value)
+        ? value.filter((item): item is string => typeof item === "string")
+        : [],
+    );
+  } catch {
+    return new Set();
+  }
 }
 
 const defaultSettings: CodexSettings = {
@@ -36,12 +70,23 @@ function shortPath(value: string): string {
 
 function formatDate(timestamp: number): string {
   if (!timestamp) return "";
-  const date = new Date(timestamp * 1000);
+  const date = new Date(timestamp * 1_000);
   const today = new Date();
-  if (date.toDateString() === today.toDateString()) {
+  if (date.toDateString() === today.toDateString())
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  }
   return date.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+function formatReset(timestamp: number | null): string {
+  if (!timestamp) return "Reset time unavailable";
+  const date = new Date(timestamp * 1_000);
+  const diff = date.getTime() - Date.now();
+  if (diff <= 0) return "Resetting soon";
+  const minutes = Math.ceil(diff / 60_000);
+  if (minutes < 60) return `Resets in ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const remaining = minutes % 60;
+  return `Resets in ${hours}h${remaining ? ` ${remaining}m` : ""}`;
 }
 
 function itemIcon(kind: ChatItem["kind"]): string {
@@ -73,166 +118,33 @@ function upsertItem(items: ChatItem[], incoming: ChatItem): ChatItem[] {
   return next;
 }
 
-function InteractionDialog({
-  interaction,
-  onResolve,
+function MessageContent({
+  item,
 }: {
-  interaction: PendingInteraction;
-  onResolve: (result: unknown) => void;
-}): React.JSX.Element {
-  const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [otherAnswers, setOtherAnswers] = useState<Record<string, string>>({});
-
-  if (interaction.kind === "user-input") {
-    const questions = interaction.questions ?? [];
-    return (
-      <div className="modal-backdrop">
-        <section
-          className="modal"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="interaction-title"
-        >
-          <span className="eyebrow">Input requested</span>
-          <h2 id="interaction-title">{interaction.title}</h2>
-          <p className="modal-detail">{interaction.detail}</p>
-          <div className="question-list">
-            {questions.map((question) => (
-              <label className="question" key={question.id}>
-                <span className="question-header">{question.header}</span>
-                <span>{question.question}</span>
-                {question.options?.length ? (
-                  <>
-                    <select
-                      value={answers[question.id] ?? ""}
-                      onChange={(event) =>
-                        setAnswers((current) => ({
-                          ...current,
-                          [question.id]: event.target.value,
-                        }))
-                      }
-                    >
-                      <option value="">Select an answer…</option>
-                      {question.options.map((option) => (
-                        <option value={option.label} key={option.label}>
-                          {option.label} — {option.description}
-                        </option>
-                      ))}
-                    </select>
-                    {question.isOther ? (
-                      <input
-                        type={question.isSecret ? "password" : "text"}
-                        placeholder="Or enter another answer…"
-                        value={otherAnswers[question.id] ?? ""}
-                        onChange={(event) =>
-                          setOtherAnswers((current) => ({
-                            ...current,
-                            [question.id]: event.target.value,
-                          }))
-                        }
-                      />
-                    ) : null}
-                  </>
-                ) : (
-                  <input
-                    type={question.isSecret ? "password" : "text"}
-                    value={answers[question.id] ?? ""}
-                    onChange={(event) =>
-                      setAnswers((current) => ({
-                        ...current,
-                        [question.id]: event.target.value,
-                      }))
-                    }
-                    autoFocus
-                  />
-                )}
-              </label>
-            ))}
-          </div>
-          <div className="modal-actions">
-            <button
-              className="primary-button"
-              disabled={questions.some(
-                (question) =>
-                  !(
-                    otherAnswers[question.id] ??
-                    answers[question.id] ??
-                    ""
-                  ).trim(),
-              )}
-              onClick={() =>
-                onResolve({
-                  answers: Object.fromEntries(
-                    questions.map((question) => [
-                      question.id,
-                      {
-                        answers: [
-                          otherAnswers[question.id] ??
-                            answers[question.id] ??
-                            "",
-                        ],
-                      },
-                    ]),
-                  ),
-                })
-              }
-            >
-              Continue
-            </button>
-          </div>
-        </section>
-      </div>
-    );
-  }
-
-  return (
-    <div className="modal-backdrop">
-      <section
-        className="modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="interaction-title"
-      >
-        <span className="eyebrow">Approval required</span>
-        <h2 id="interaction-title">{interaction.title}</h2>
-        <p className="modal-detail">{interaction.detail}</p>
-        {interaction.command ? (
-          <pre className="approval-command">{interaction.command}</pre>
-        ) : null}
-        {interaction.cwd ? (
-          <p className="approval-path">In {interaction.cwd}</p>
-        ) : null}
-        <div className="modal-actions split-actions">
-          <button
-            className="ghost-button danger"
-            onClick={() => onResolve({ decision: "decline" })}
-          >
-            Deny
-          </button>
-          <div>
-            <button
-              className="ghost-button"
-              onClick={() => onResolve({ decision: "acceptForSession" })}
-            >
-              Allow for session
-            </button>
-            <button
-              className="primary-button"
-              onClick={() => onResolve({ decision: "accept" })}
-            >
-              Allow once
-            </button>
-          </div>
-        </div>
-      </section>
-    </div>
-  );
+  item: ChatItem;
+}): React.JSX.Element | null {
+  if (item.kind === "file" && item.changes?.length)
+    return <DiffView changes={item.changes} />;
+  if (
+    item.kind === "assistant" ||
+    item.kind === "plan" ||
+    item.kind === "reasoning"
+  )
+    return item.text ? <RichText text={item.text} /> : null;
+  if (item.kind === "command" || item.kind === "tool")
+    return item.text ? <ActivityOutput text={item.text} /> : null;
+  return item.text ? <pre className="plain-message">{item.text}</pre> : null;
 }
 
 export function App(): React.JSX.Element {
   const [connection, setConnection] = useState<ConnectionState>("connecting");
   const [connectionMessage, setConnectionMessage] = useState("");
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [threadView, setThreadView] = useState<"active" | "archived">("active");
+  const [pinnedThreads, setPinnedThreads] = useState<Set<string>>(initialPins);
+  const [threadMenu, setThreadMenu] = useState<ThreadSummary | null>(null);
   const [models, setModels] = useState<ModelOption[]>([]);
   const [selectedThread, setSelectedThread] = useState<ThreadSummary | null>(
     null,
@@ -242,26 +154,76 @@ export function App(): React.JSX.Element {
   const [theme, setTheme] = useState<ThemeMode>(initialTheme);
   const [search, setSearch] = useState("");
   const [prompt, setPrompt] = useState("");
+  const [attachments, setAttachments] = useState<ImageAttachment[]>([]);
+  const [dragging, setDragging] = useState(false);
   const [loadingThread, setLoadingThread] = useState(false);
   const [running, setRunning] = useState(false);
   const [activeTurnId, setActiveTurnId] = useState<string | null>(null);
   const [interactions, setInteractions] = useState<PendingInteraction[]>([]);
+  const [usage, setUsage] = useState<UsageInfo | null>(null);
+  const [diagnostics, setDiagnostics] = useState<CodexDiagnostics | null>(null);
   const [error, setError] = useState("");
   const activeThreadRef = useRef<string | null>(null);
+  const promptRef = useRef<HTMLTextAreaElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
 
   const selectedModel = models.find((model) => model.id === settings.model);
   const effortOptions = selectedModel?.efforts.length
     ? selectedModel.efforts
     : ["low", "medium", "high", "xhigh", "max", "ultra"];
+  const supportsImages =
+    !selectedModel || selectedModel.inputModalities.includes("image");
+  const archived = threadView === "archived";
 
-  const refreshThreads = useCallback(async (term = "") => {
+  const displayedThreads = useMemo(
+    () =>
+      [...threads].sort((a, b) => {
+        const pinDifference =
+          Number(pinnedThreads.has(b.id)) - Number(pinnedThreads.has(a.id));
+        return pinDifference || b.updatedAt - a.updatedAt;
+      }),
+    [pinnedThreads, threads],
+  );
+
+  const refreshThreads = useCallback(
+    async (term = "", showArchived = false) => {
+      try {
+        const page = await window.codex.listThreads({
+          ...(term ? { searchTerm: term } : {}),
+          archived: showArchived,
+        });
+        setThreads(page.threads);
+        setNextCursor(page.nextCursor);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+      }
+    },
+    [],
+  );
+
+  const loadMoreThreads = async (): Promise<void> => {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
     try {
-      setThreads(await window.codex.listThreads(term || undefined));
+      const page = await window.codex.listThreads({
+        ...(search ? { searchTerm: search } : {}),
+        archived,
+        cursor: nextCursor,
+      });
+      setThreads((current) => {
+        const existing = new Set(current.map((thread) => thread.id));
+        return [
+          ...current,
+          ...page.threads.filter((thread) => !existing.has(thread.id)),
+        ];
+      });
+      setNextCursor(page.nextCursor);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setLoadingMore(false);
     }
-  }, []);
+  };
 
   const loadModels = useCallback(async () => {
     try {
@@ -278,15 +240,32 @@ export function App(): React.JSX.Element {
     }
   }, []);
 
+  const loadUsage = useCallback(async () => {
+    setUsage(await window.codex.getUsage());
+  }, []);
+
+  const clearConversation = useCallback(() => {
+    activeThreadRef.current = null;
+    setSelectedThread(null);
+    setItems([]);
+    setActiveTurnId(null);
+    setRunning(false);
+  }, []);
+
   const handleUiEvent = useCallback(
     (event: UiEvent) => {
       if (event.type === "connection") {
         setConnection(event.state);
         setConnectionMessage(event.message ?? "");
         if (event.state === "connected") {
-          void refreshThreads();
+          void refreshThreads(search, archived);
           void loadModels();
+          void loadUsage();
         }
+        return;
+      }
+      if (event.type === "usage") {
+        setUsage(event.usage);
         return;
       }
       if (event.type === "interaction") {
@@ -294,7 +273,13 @@ export function App(): React.JSX.Element {
         return;
       }
       if (event.type === "thread-changed") {
-        void refreshThreads(search);
+        if (
+          event.threadId === activeThreadRef.current &&
+          (event.action === "deleted" ||
+            (event.action === "archived" && !archived))
+        )
+          clearConversation();
+        void refreshThreads(search, archived);
         return;
       }
       if (event.type === "error") {
@@ -320,11 +305,19 @@ export function App(): React.JSX.Element {
           setActiveTurnId(null);
           setRunning(false);
           if (event.error) setError(event.error);
-          void refreshThreads(search);
+          void refreshThreads(search, archived);
+          void loadUsage();
         }
       }
     },
-    [loadModels, refreshThreads, search],
+    [
+      archived,
+      clearConversation,
+      loadModels,
+      loadUsage,
+      refreshThreads,
+      search,
+    ],
   );
 
   useEffect(() => {
@@ -335,7 +328,6 @@ export function App(): React.JSX.Element {
       document.documentElement.dataset.theme = resolved;
       document.documentElement.style.colorScheme = resolved;
     };
-
     localStorage.setItem(THEME_KEY, theme);
     applyTheme();
     void window.codex.setTheme(theme);
@@ -349,24 +341,41 @@ export function App(): React.JSX.Element {
       setConnection(result.state);
       setConnectionMessage(result.message ?? "");
       if (result.state === "connected") {
-        void refreshThreads();
+        void refreshThreads(search, archived);
         void loadModels();
+        void loadUsage();
       }
     });
     return unsubscribe;
-  }, [handleUiEvent, loadModels, refreshThreads]);
+  }, [archived, handleUiEvent, loadModels, loadUsage, refreshThreads, search]);
 
   useEffect(() => {
     if (connection !== "connected") return;
-    const timer = setTimeout(() => void refreshThreads(search), 180);
-    return () => clearTimeout(timer);
-  }, [connection, refreshThreads, search]);
+    const timer = window.setTimeout(
+      () => void refreshThreads(search, archived),
+      180,
+    );
+    return () => window.clearTimeout(timer);
+  }, [archived, connection, refreshThreads, search]);
+
+  useLayoutEffect(() => {
+    const textarea = promptRef.current;
+    if (!textarea) return;
+    textarea.style.height = "0px";
+    const height = Math.min(Math.max(textarea.scrollHeight, 28), 180);
+    textarea.style.height = `${height}px`;
+    textarea.style.overflowY = textarea.scrollHeight > 180 ? "auto" : "hidden";
+  }, [prompt]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [items]);
 
   const openThread = async (thread: ThreadSummary): Promise<void> => {
+    if (archived) {
+      setThreadMenu(thread);
+      return;
+    }
     setLoadingThread(true);
     setError("");
     try {
@@ -389,12 +398,10 @@ export function App(): React.JSX.Element {
   };
 
   const newChat = (): void => {
-    activeThreadRef.current = null;
-    setSelectedThread(null);
-    setItems([]);
-    setActiveTurnId(null);
-    setRunning(false);
+    clearConversation();
+    setAttachments([]);
     setError("");
+    promptRef.current?.focus();
   };
 
   const chooseWorkspace = async (): Promise<void> => {
@@ -404,15 +411,58 @@ export function App(): React.JSX.Element {
     setSettings((current) => ({ ...current, cwd }));
   };
 
+  const addAttachments = (incoming: ImageAttachment[]): void => {
+    if (!supportsImages) {
+      setError("The selected model does not advertise image input support.");
+      return;
+    }
+    setAttachments((current) => {
+      const seen = new Set(current.map((item) => item.path));
+      const next = [
+        ...current,
+        ...incoming.filter((item) => !seen.has(item.path)),
+      ];
+      if (next.length > 8) setError("Attach at most 8 images at a time.");
+      return next.slice(0, 8);
+    });
+  };
+
+  const chooseImages = async (): Promise<void> => {
+    try {
+      addAttachments(await window.codex.chooseImages());
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  };
+
+  const attachFiles = async (files: FileList | File[]): Promise<void> => {
+    try {
+      const paths = Array.from(files)
+        .map((file) => window.codex.getDroppedFilePath(file))
+        .filter(Boolean);
+      if (!paths.length)
+        throw new Error("Could not read the dropped image path.");
+      addAttachments(await window.codex.prepareImages(paths));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  };
+
   const sendPrompt = async (): Promise<void> => {
     const text = prompt.trim();
-    if (!text || running) return;
+    if ((!text && !attachments.length) || running) return;
     if (!settings.cwd) {
       setError("Choose a workspace before starting a conversation.");
       return;
     }
+    if (attachments.length && !supportsImages) {
+      setError("Choose an image-capable model or remove the attachments.");
+      return;
+    }
 
+    const pendingAttachments = attachments;
     setPrompt("");
+    setAttachments([]);
     setError("");
     setRunning(true);
     try {
@@ -421,18 +471,20 @@ export function App(): React.JSX.Element {
         thread = await window.codex.createThread(settings);
         activeThreadRef.current = thread.id;
         setSelectedThread(thread);
-        await refreshThreads(search);
+        await refreshThreads(search, archived);
       }
       const result = await window.codex.startTurn({
         ...settings,
         threadId: thread.id,
         prompt: text,
+        imagePaths: pendingAttachments.map((attachment) => attachment.path),
       });
       setActiveTurnId(result.turnId);
     } catch (cause) {
       setRunning(false);
       setError(cause instanceof Error ? cause.message : String(cause));
       setPrompt(text);
+      setAttachments(pendingAttachments);
     }
   };
 
@@ -456,6 +508,75 @@ export function App(): React.JSX.Element {
     }
   };
 
+  const runThreadAction = async (
+    action: () => Promise<void>,
+  ): Promise<void> => {
+    try {
+      await action();
+      setThreadMenu(null);
+      await refreshThreads(search, archived);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  };
+
+  const renameThread = (): void => {
+    if (!threadMenu) return;
+    const name = window.prompt("Conversation name", threadMenu.title)?.trim();
+    if (name)
+      void runThreadAction(() =>
+        window.codex.renameThread(threadMenu.id, name),
+      );
+  };
+
+  const togglePin = (): void => {
+    if (!threadMenu) return;
+    const next = new Set(pinnedThreads);
+    if (next.has(threadMenu.id)) next.delete(threadMenu.id);
+    else next.add(threadMenu.id);
+    setPinnedThreads(next);
+    localStorage.setItem(PINNED_THREADS_KEY, JSON.stringify([...next]));
+    setThreadMenu(null);
+  };
+
+  const deleteThread = (): void => {
+    if (!threadMenu) return;
+    if (
+      !window.confirm(
+        `Permanently delete “${threadMenu.title}”? This cannot be undone.`,
+      )
+    )
+      return;
+    const threadId = threadMenu.id;
+    void runThreadAction(async () => {
+      await window.codex.deleteThread(threadId);
+      if (activeThreadRef.current === threadId) clearConversation();
+      const next = new Set(pinnedThreads);
+      next.delete(threadId);
+      setPinnedThreads(next);
+      localStorage.setItem(PINNED_THREADS_KEY, JSON.stringify([...next]));
+    });
+  };
+
+  const showDiagnostics = async (): Promise<void> => {
+    try {
+      setDiagnostics(await window.codex.getDiagnostics());
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  };
+
+  const reconnect = async (): Promise<void> => {
+    setDiagnostics(null);
+    setError("");
+    try {
+      await window.codex.reconnect();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+      await showDiagnostics();
+    }
+  };
+
   const visibleItems = useMemo(
     () =>
       items.filter((item) => item.kind !== "status" || item.text || item.title),
@@ -463,7 +584,22 @@ export function App(): React.JSX.Element {
   );
 
   return (
-    <div className="app-shell">
+    <div
+      className={`app-shell ${dragging ? "is-dragging" : ""}`}
+      onDragEnter={(event) => {
+        event.preventDefault();
+        setDragging(true);
+      }}
+      onDragOver={(event) => event.preventDefault()}
+      onDragLeave={(event) => {
+        if (event.currentTarget === event.target) setDragging(false);
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        setDragging(false);
+        void attachFiles(event.dataTransfer.files);
+      }}
+    >
       <aside className="sidebar">
         <div className="traffic-space" />
         <div className="brand-row">
@@ -484,33 +620,79 @@ export function App(): React.JSX.Element {
             placeholder="Search threads"
           />
         </div>
-        <div className="thread-label">Recent</div>
+        <div
+          className="thread-tabs"
+          role="tablist"
+          aria-label="Conversation type"
+        >
+          <button
+            className={!archived ? "active" : ""}
+            onClick={() => setThreadView("active")}
+          >
+            Recent
+          </button>
+          <button
+            className={archived ? "active" : ""}
+            onClick={() => setThreadView("archived")}
+          >
+            Archived
+          </button>
+        </div>
         <nav className="thread-list" aria-label="Conversation history">
-          {threads.map((thread) => (
-            <button
+          {displayedThreads.map((thread) => (
+            <div
+              className={`thread-row-wrap ${selectedThread?.id === thread.id ? "selected" : ""}`}
               key={thread.id}
-              className={`thread-row ${selectedThread?.id === thread.id ? "selected" : ""}`}
-              onClick={() => void openThread(thread)}
             >
-              <span className="thread-title">{thread.title}</span>
-              <span className="thread-meta">
-                <span>{shortPath(thread.cwd)}</span>
-                <time>{formatDate(thread.updatedAt)}</time>
-              </span>
-            </button>
+              <button
+                className="thread-row"
+                onClick={() => void openThread(thread)}
+              >
+                <span className="thread-title">
+                  {pinnedThreads.has(thread.id) ? (
+                    <span className="pin-mark">◆</span>
+                  ) : null}
+                  {thread.title}
+                </span>
+                <span className="thread-meta">
+                  <span>{shortPath(thread.cwd)}</span>
+                  <time>{formatDate(thread.updatedAt)}</time>
+                </span>
+              </button>
+              <button
+                className="thread-more"
+                onClick={() => setThreadMenu(thread)}
+                aria-label={`Manage ${thread.title}`}
+              >
+                •••
+              </button>
+            </div>
           ))}
           {!threads.length && connection === "connected" ? (
             <p className="empty-sidebar">No matching conversations.</p>
           ) : null}
+          {nextCursor ? (
+            <button
+              className="load-more"
+              onClick={() => void loadMoreThreads()}
+              disabled={loadingMore}
+            >
+              {loadingMore ? "Loading…" : "Load more"}
+            </button>
+          ) : null}
         </nav>
-        <div className="connection-row">
+        <button
+          className="connection-row"
+          onClick={() => void showDiagnostics()}
+        >
           <span className={`connection-dot ${connection}`} />
           <span>
             {connection === "connected"
               ? "Codex connected"
               : connectionMessage || connection}
           </span>
-        </div>
+          <span className="connection-help">ⓘ</span>
+        </button>
       </aside>
 
       <main className="main-panel">
@@ -524,6 +706,15 @@ export function App(): React.JSX.Element {
             <span>{shortPath(settings.cwd)}</span>
           </button>
           <div className="toolbar-controls">
+            {usage?.primary ? (
+              <button
+                className={`usage-pill ${usage.reached ? "reached" : ""}`}
+                onClick={() => void showDiagnostics()}
+                title={`${usage.label}: ${usage.primary.usedPercent}% used · ${formatReset(usage.primary.resetsAt)}`}
+              >
+                {Math.round(usage.primary.usedPercent)}% used
+              </button>
+            ) : null}
             <select
               aria-label="Model"
               value={settings.model}
@@ -651,9 +842,10 @@ export function App(): React.JSX.Element {
                         </span>
                       ) : null}
                     </div>
-                    {item.text ? (
-                      <pre>{item.text}</pre>
-                    ) : item.status === "inProgress" ? (
+                    <MessageContent item={item} />
+                    {!item.text &&
+                    !item.changes?.length &&
+                    item.status === "inProgress" ? (
                       <span className="working">Working…</span>
                     ) : null}
                   </div>
@@ -681,53 +873,139 @@ export function App(): React.JSX.Element {
             </div>
           ) : null}
           <div className={`composer ${running ? "running" : ""}`}>
-            <textarea
-              value={prompt}
-              onChange={(event) => setPrompt(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  void sendPrompt();
+            {attachments.length ? (
+              <div className="attachment-strip">
+                {attachments.map((attachment) => (
+                  <div
+                    className="attachment"
+                    key={attachment.path}
+                    title={attachment.path}
+                  >
+                    <img src={attachment.dataUrl} alt="" />
+                    <span>{attachment.name}</span>
+                    <button
+                      onClick={() =>
+                        setAttachments((current) =>
+                          current.filter(
+                            (item) => item.path !== attachment.path,
+                          ),
+                        )
+                      }
+                      aria-label={`Remove ${attachment.name}`}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            <div className="composer-input-row">
+              <button
+                className="attach-button"
+                onClick={() => void chooseImages()}
+                disabled={
+                  !supportsImages || running || connection !== "connected"
                 }
-              }}
-              placeholder={
-                connection === "connected"
-                  ? "Message Codex…"
-                  : "Waiting for Codex…"
-              }
-              disabled={connection !== "connected" || running}
-              rows={1}
-            />
-            {running ? (
-              <button
-                className="send-button stop"
-                onClick={() => void stopTurn()}
-                aria-label="Stop response"
+                title={
+                  supportsImages
+                    ? "Attach images"
+                    : "Selected model does not support images"
+                }
               >
-                ■
+                ＋
               </button>
-            ) : (
-              <button
-                className="send-button"
-                onClick={() => void sendPrompt()}
-                disabled={!prompt.trim() || connection !== "connected"}
-                aria-label="Send prompt"
-              >
-                ↑
-              </button>
-            )}
+              <textarea
+                ref={promptRef}
+                value={prompt}
+                onChange={(event) => setPrompt(event.target.value)}
+                onPaste={(event) => {
+                  if (event.clipboardData.files.length)
+                    void attachFiles(event.clipboardData.files);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    void sendPrompt();
+                  }
+                }}
+                placeholder={
+                  connection === "connected"
+                    ? "Message Codex…"
+                    : "Waiting for Codex…"
+                }
+                disabled={connection !== "connected" || running}
+                rows={1}
+              />
+              {running ? (
+                <button
+                  className="send-button stop"
+                  onClick={() => void stopTurn()}
+                  aria-label="Stop response"
+                >
+                  ■
+                </button>
+              ) : (
+                <button
+                  className="send-button"
+                  onClick={() => void sendPrompt()}
+                  disabled={
+                    (!prompt.trim() && !attachments.length) ||
+                    connection !== "connected"
+                  }
+                  aria-label="Send prompt"
+                >
+                  ↑
+                </button>
+              )}
+            </div>
           </div>
           <p className="composer-note">
-            Enter to send · Shift+Enter for a new line · Changes may require
-            approval
+            Enter to send · Shift+Enter for a new line · Drop or paste images ·
+            Changes may require approval
           </p>
         </footer>
       </main>
 
+      {dragging ? (
+        <div className="drop-overlay">
+          <div>
+            <strong>Drop images to attach</strong>
+            <span>PNG, JPEG, GIF, or WebP · up to 15 MB</span>
+          </div>
+        </div>
+      ) : null}
       {interactions[0] ? (
         <InteractionDialog
           interaction={interactions[0]}
           onResolve={(result) => void resolveInteraction(result)}
+        />
+      ) : null}
+      {threadMenu ? (
+        <ThreadActionsDialog
+          thread={threadMenu}
+          archived={archived}
+          pinned={pinnedThreads.has(threadMenu.id)}
+          onClose={() => setThreadMenu(null)}
+          onRename={renameThread}
+          onPin={togglePin}
+          onArchive={() =>
+            void runThreadAction(() =>
+              window.codex.archiveThread(threadMenu.id),
+            )
+          }
+          onRestore={() =>
+            void runThreadAction(() =>
+              window.codex.unarchiveThread(threadMenu.id),
+            )
+          }
+          onDelete={deleteThread}
+        />
+      ) : null}
+      {diagnostics ? (
+        <DiagnosticsDialog
+          diagnostics={diagnostics}
+          onClose={() => setDiagnostics(null)}
+          onReconnect={() => void reconnect()}
         />
       ) : null}
     </div>

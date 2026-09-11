@@ -1,8 +1,13 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import {
+  execFile,
+  spawn,
+  type ChildProcessWithoutNullStreams,
+} from "node:child_process";
 import { EventEmitter } from "node:events";
 import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
+import { promisify } from "node:util";
 import { JsonLineParser } from "./json-lines";
 import { RpcRequestTracker, type RpcResponse } from "./rpc-request-tracker";
 
@@ -16,6 +21,8 @@ interface RpcNotification {
   method: string;
   params?: unknown;
 }
+
+const execFileAsync = promisify(execFile);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -78,11 +85,24 @@ export class CodexProcess extends EventEmitter {
   private readonly requests = new RpcRequestTracker();
   private readonly parser = new JsonLineParser();
   private stderrTail = "";
+  private binary = "";
+  private cliVersion = "";
+  private startedAt: number | null = null;
 
   async connect(): Promise<void> {
     if (this.child) return;
 
     const binary = findCodexBinary();
+    this.binary = binary;
+    try {
+      const result = await execFileAsync(binary, ["--version"], {
+        env: buildCodexEnvironment(binary),
+        timeout: 5_000,
+      });
+      this.cliVersion = result.stdout.trim();
+    } catch {
+      this.cliVersion = "Unknown";
+    }
     this.stderrTail = "";
     const child = spawn(binary, ["app-server", "--stdio"], {
       // NVM's `codex` launcher uses `#!/usr/bin/env node`. Packaged macOS
@@ -91,6 +111,7 @@ export class CodexProcess extends EventEmitter {
       stdio: ["pipe", "pipe", "pipe"],
     });
     this.child = child;
+    this.startedAt = Date.now();
 
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => {
@@ -123,7 +144,7 @@ export class CodexProcess extends EventEmitter {
       clientInfo: {
         name: "codex-desktop-intel",
         title: "Codex Desktop Intel",
-        version: "0.1.1",
+        version: "0.2.0",
       },
       capabilities: {
         experimentalApi: true,
@@ -162,8 +183,25 @@ export class CodexProcess extends EventEmitter {
   close(): void {
     const child = this.child;
     this.child = null;
+    this.startedAt = null;
     if (child && !child.killed) child.kill();
     this.rejectPending(new Error("Codex app-server stopped."));
+  }
+
+  getDiagnostics(): {
+    binary: string;
+    cliVersion: string;
+    processId: number | null;
+    startedAt: number | null;
+    stderrTail: string;
+  } {
+    return {
+      binary: this.binary,
+      cliVersion: this.cliVersion,
+      processId: this.child?.pid ?? null,
+      startedAt: this.startedAt,
+      stderrTail: this.stderrTail.trim(),
+    };
   }
 
   private write(message: unknown): void {
@@ -195,6 +233,7 @@ export class CodexProcess extends EventEmitter {
   private handleExit(error: Error): void {
     if (!this.child) return;
     this.child = null;
+    this.startedAt = null;
     this.rejectPending(error);
     this.emit("exit", error);
   }

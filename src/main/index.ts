@@ -10,10 +10,12 @@ import { join } from "node:path";
 import type {
   CodexSettings,
   StartTurnInput,
+  ThreadListInput,
   ThemeMode,
   UiEvent,
 } from "../shared/types";
 import { CodexService } from "./codex-service";
+import { prepareImageAttachments } from "./image-attachments";
 
 const service = new CodexService();
 let mainWindow: BrowserWindow | null = null;
@@ -41,8 +43,24 @@ function registerIpc(): void {
       : await dialog.showOpenDialog(options);
     return result.canceled ? null : (result.filePaths[0] ?? null);
   });
-  ipcMain.handle("codex:list-threads", (_event, searchTerm?: string) =>
-    service.listThreads(searchTerm),
+  ipcMain.handle("codex:choose-images", async () => {
+    const options: Electron.OpenDialogOptions = {
+      properties: ["openFile", "multiSelections"],
+      title: "Attach images",
+      filters: [
+        { name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp"] },
+      ],
+    };
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, options)
+      : await dialog.showOpenDialog(options);
+    return result.canceled ? [] : prepareImageAttachments(result.filePaths);
+  });
+  ipcMain.handle("codex:prepare-images", (_event, paths: string[]) =>
+    prepareImageAttachments(paths),
+  );
+  ipcMain.handle("codex:list-threads", (_event, input?: ThreadListInput) =>
+    service.listThreads(input),
   );
   ipcMain.handle("codex:list-models", () => service.listModels());
   ipcMain.handle("codex:open-thread", (_event, threadId: string) =>
@@ -50,6 +68,20 @@ function registerIpc(): void {
   );
   ipcMain.handle("codex:create-thread", (_event, settings: CodexSettings) =>
     service.createThread(settings),
+  );
+  ipcMain.handle(
+    "codex:rename-thread",
+    (_event, threadId: string, name: string) =>
+      service.renameThread(threadId, name),
+  );
+  ipcMain.handle("codex:archive-thread", (_event, threadId: string) =>
+    service.archiveThread(threadId),
+  );
+  ipcMain.handle("codex:unarchive-thread", (_event, threadId: string) =>
+    service.unarchiveThread(threadId),
+  );
+  ipcMain.handle("codex:delete-thread", (_event, threadId: string) =>
+    service.deleteThread(threadId),
   );
   ipcMain.handle("codex:start-turn", (_event, input: StartTurnInput) =>
     service.startTurn(input),
@@ -65,6 +97,9 @@ function registerIpc(): void {
       service.resolveInteraction(requestId, result);
     },
   );
+  ipcMain.handle("codex:usage", () => service.getUsage());
+  ipcMain.handle("codex:diagnostics", () => service.getDiagnostics());
+  ipcMain.handle("codex:reconnect", () => service.reconnect());
 }
 
 function createWindow(): void {
@@ -84,7 +119,13 @@ function createWindow(): void {
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith("https://")) void shell.openExternal(url);
+    try {
+      const protocol = new URL(url).protocol;
+      if (protocol === "https:" || protocol === "http:")
+        void shell.openExternal(url);
+    } catch {
+      // Deny malformed and non-web URLs.
+    }
     return { action: "deny" };
   });
 
