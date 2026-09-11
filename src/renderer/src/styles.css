@@ -711,6 +711,208 @@ button {
   font-size: 11px;
 }
 
+:root[data-theme="dark"] {
+  color: #e8e6de;
+  background: #171815;
+}
+:root[data-theme="dark"] .app-shell,
+:root[data-theme="dark"] .main-panel {
+  background: #171815;
+}
+:root[data-theme="dark"] .sidebar {
+  border-right-color: #36372f;
+  background: #20211d;
+}
+:root[data-theme="dark"] .brand-row small,
+:root[data-theme="dark"] .thread-label,
+:root[data-theme="dark"] .thread-meta,
+:root[data-theme="dark"] .empty-sidebar,
+:root[data-theme="dark"] .connection-row,
+:root[data-theme="dark"] .composer-note,
+:root[data-theme="dark"] .approval-path {
+  color: #98998f;
+}
+:root[data-theme="dark"] .brand-mark {
+  color: #20211d;
+  background: #e6e3da;
+}
+:root[data-theme="dark"] .new-chat-button {
+  border-color: #3d3f36;
+  background: #292a24;
+}
+:root[data-theme="dark"] .new-chat-button:hover,
+:root[data-theme="dark"] .suggestions button:hover {
+  border-color: #5b5d52;
+  background: #33342d;
+}
+:root[data-theme="dark"] .search-wrap {
+  color: #9b9c92;
+  background: #292a25;
+}
+:root[data-theme="dark"] .search-wrap input {
+  color: #e4e2da;
+}
+:root[data-theme="dark"] .search-wrap input::placeholder,
+:root[data-theme="dark"] .composer textarea::placeholder {
+  color: #7e8077;
+}
+:root[data-theme="dark"] .thread-row:hover {
+  background: #2b2c27;
+}
+:root[data-theme="dark"] .thread-row.selected {
+  background: #35362f;
+}
+:root[data-theme="dark"] .toolbar {
+  border-bottom-color: #34362f;
+}
+:root[data-theme="dark"] .workspace-button:hover {
+  background: #292a25;
+}
+:root[data-theme="dark"] .folder-icon,
+:root[data-theme="dark"] .eyebrow,
+:root[data-theme="dark"] .question-header {
+  color: #baa27e;
+}
+:root[data-theme="dark"] .toolbar select {
+  border-color: #3c3e36;
+  color: #c8c7bf;
+  background: #23241f;
+}
+:root[data-theme="dark"] .toolbar select:focus {
+  border-color: #6e6d62;
+}
+:root[data-theme="dark"] .welcome p,
+:root[data-theme="dark"] .center-state,
+:root[data-theme="dark"] .modal-detail,
+:root[data-theme="dark"] .question {
+  color: #aaa99f;
+}
+:root[data-theme="dark"] .suggestions button {
+  border-color: #373930;
+  background: #242520;
+}
+:root[data-theme="dark"] .spinner {
+  border-color: #45473e;
+  border-top-color: #dedbd2;
+}
+:root[data-theme="dark"] .message-icon {
+  border-color: #42443b;
+  color: #aaa99f;
+  background: #292a25;
+}
+:root[data-theme="dark"] .message.user .message-icon {
+  border-color: #dedbd2;
+  color: #1e1f1b;
+  background: #dedbd2;
+}
+:root[data-theme="dark"] .message.assistant .message-icon {
+  color: #1d1e1a;
+  background: #b59a72;
+}
+:root[data-theme="dark"] .message.error .message-icon {
+  color: #efaaa2;
+  background: #4b2d2a;
+}
+:root[data-theme="dark"] .message-body pre {
+  color: #dedcd4;
+}
+:root[data-theme="dark"] .message.command .message-body,
+:root[data-theme="dark"] .message.file .message-body,
+:root[data-theme="dark"] .message.tool .message-body,
+:root[data-theme="dark"] .message.plan .message-body,
+:root[data-theme="dark"] .message.reasoning .message-body {
+  border-color: #383a32;
+  background: #23241f;
+}
+:root[data-theme="dark"] .status-pill {
+  color: #b2b1a8;
+  background: #383a33;
+}
+:root[data-theme="dark"] .status-pill.completed {
+  color: #9bcca2;
+  background: #263c2a;
+}
+:root[data-theme="dark"] .status-pill.failed,
+:root[data-theme="dark"] .status-pill.declined {
+  color: #efa59d;
+  background: #472b29;
+}
+:root[data-theme="dark"] .working {
+  color: #9c9d94;
+}
+:root[data-theme="dark"] .running-indicator span {
+  background: #9c9d94;
+}
+:root[data-theme="dark"] .composer-area {
+  background: linear-gradient(transparent, #171815 18%);
+}
+:root[data-theme="dark"] .composer {
+  border-color: #41433a;
+  background: #20211d;
+  box-shadow: 0 8px 30px #0000002e;
+}
+:root[data-theme="dark"] .composer:focus-within {
+  border-color: #77766a;
+  box-shadow: 0 8px 34px #00000045;
+}
+:root[data-theme="dark"] .composer textarea {
+  color: #e5e3da;
+}
+:root[data-theme="dark"] .send-button,
+:root[data-theme="dark"] .primary-button {
+  border-color: #e0ddd5;
+  color: #1d1e1a;
+  background: #e0ddd5;
+}
+:root[data-theme="dark"] .send-button:hover {
+  background: #fff;
+}
+:root[data-theme="dark"] .error-banner {
+  border-color: #70443f;
+  color: #efaaa2;
+  background: #3d2826;
+}
+:root[data-theme="dark"] .modal-backdrop {
+  background: #080906ad;
+}
+:root[data-theme="dark"] .modal {
+  border-color: #3d3f37;
+  background: #1f201c;
+  box-shadow: 0 24px 80px #00000080;
+}
+:root[data-theme="dark"] .approval-command {
+  border-color: #3e4037;
+  color: #dedcd3;
+  background: #282924;
+}
+:root[data-theme="dark"] .ghost-button {
+  border-color: #46483f;
+  background: transparent;
+}
+:root[data-theme="dark"] .ghost-button.danger {
+  color: #ef9991;
+}
+:root[data-theme="dark"] .question input,
+:root[data-theme="dark"] .question select {
+  border-color: #45473e;
+  color: #dedcd4;
+  background: #292a25;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .app-shell,
+  .sidebar,
+  .main-panel,
+  .toolbar,
+  .composer,
+  .modal {
+    transition:
+      color 140ms ease,
+      background-color 140ms ease,
+      border-color 140ms ease;
+  }
+}
+
 @media (max-width: 940px) {
   .app-shell {
     grid-template-columns: 235px minmax(0, 1fr);

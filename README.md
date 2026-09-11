@@ -11,6 +11,7 @@ A small local macOS desktop client for the Codex CLI, designed to be packaged fo
 - Codex `request_user_input` questions.
 - Stop controls for active turns.
 - Model, reasoning-effort, and sandbox selection.
+- Persistent system, light, and dark appearance modes.
 - Conservative defaults: workspace-write access, no sandbox network access, and on-request approvals.
 
 Codex remains the source of truth for thread history and authentication. The app only remembers the most recently selected workspace in local UI storage.
@@ -22,7 +23,7 @@ Codex remains the source of truth for thread history and authentication. The app
 - A current, installed Codex CLI with `codex app-server` support.
 - An authenticated Codex CLI session (`codex` should already work in Terminal).
 
-The application looks for `codex` in `PATH`, common Homebrew/npm locations, and installed NVM Node versions. If it cannot locate the CLI, set `CODEX_BINARY` to its absolute path before launching.
+The application looks for `codex` in `PATH`, common Homebrew/npm locations, and installed NVM Node versions. It also preserves the discovered NVM binary directory when launching Codex, because macOS GUI applications do not inherit the Terminal's full `PATH`. If it cannot locate the CLI, set `CODEX_BINARY` to its absolute path before launching.
 
 ## Run locally
 

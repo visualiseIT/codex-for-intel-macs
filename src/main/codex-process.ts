@@ -2,7 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { delimiter, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { JsonLineParser } from "./json-lines";
 import { RpcRequestTracker, type RpcResponse } from "./rpc-request-tracker";
 
@@ -55,18 +55,39 @@ export function findCodexBinary(): string {
   return located;
 }
 
+export function buildCodexEnvironment(
+  binary: string,
+  baseEnvironment: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  const binaryDirectory = dirname(binary);
+  const existingPath = baseEnvironment.PATH ?? "";
+  const pathEntries = existingPath.split(delimiter).filter(Boolean);
+
+  return {
+    ...baseEnvironment,
+    PATH: [
+      binaryDirectory,
+      ...pathEntries.filter((entry) => entry !== binaryDirectory),
+    ].join(delimiter),
+  };
+}
+
 export class CodexProcess extends EventEmitter {
   private child: ChildProcessWithoutNullStreams | null = null;
   private nextId = 1;
   private readonly requests = new RpcRequestTracker();
   private readonly parser = new JsonLineParser();
+  private stderrTail = "";
 
   async connect(): Promise<void> {
     if (this.child) return;
 
     const binary = findCodexBinary();
+    this.stderrTail = "";
     const child = spawn(binary, ["app-server", "--stdio"], {
-      env: process.env,
+      // NVM's `codex` launcher uses `#!/usr/bin/env node`. Packaged macOS
+      // applications receive a minimal PATH, so keep its Node sibling visible.
+      env: buildCodexEnvironment(binary),
       stdio: ["pipe", "pipe", "pipe"],
     });
     this.child = child;
@@ -84,11 +105,17 @@ export class CodexProcess extends EventEmitter {
       }
     });
     child.stderr.setEncoding("utf8");
-    child.stderr.on("data", (chunk: string) => this.emit("log", chunk.trim()));
+    child.stderr.on("data", (chunk: string) => {
+      this.stderrTail = `${this.stderrTail}\n${chunk}`.slice(-2_000);
+      this.emit("log", chunk.trim());
+    });
     child.on("error", (error) => this.handleExit(error));
     child.on("exit", (code, signal) => {
+      const detail = this.stderrTail.trim().split("\n").at(-1);
       this.handleExit(
-        new Error(`Codex app-server exited (${signal ?? code ?? "unknown"}).`),
+        new Error(
+          `Codex app-server exited (${signal ?? code ?? "unknown"})${detail ? `: ${detail}` : "."}`,
+        ),
       );
     });
 
@@ -96,7 +123,7 @@ export class CodexProcess extends EventEmitter {
       clientInfo: {
         name: "codex-desktop-intel",
         title: "Codex Desktop Intel",
-        version: "0.1.0",
+        version: "0.1.1",
       },
       capabilities: {
         experimentalApi: true,

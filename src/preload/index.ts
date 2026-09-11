@@ -8,6 +8,7 @@ import type {
 
 const api: CodexDesktopApi = {
   getConnectionState: () => ipcRenderer.invoke("codex:connection"),
+  setTheme: (theme) => ipcRenderer.invoke("app:set-theme", theme),
   chooseWorkspace: () => ipcRenderer.invoke("codex:choose-workspace"),
   listThreads: (searchTerm) =>
     ipcRenderer.invoke("codex:list-threads", searchTerm),

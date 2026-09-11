@@ -101,7 +101,7 @@ send({
     clientInfo: {
       name: "codex-desktop-intel-smoke",
       title: "Codex Desktop Intel Smoke Test",
-      version: "0.1.0",
+      version: "0.1.1",
     },
     capabilities: { experimentalApi: true, requestAttestation: false },
   },

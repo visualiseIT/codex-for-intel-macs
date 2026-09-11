@@ -6,11 +6,20 @@ import type {
   ModelOption,
   PendingInteraction,
   SandboxMode,
+  ThemeMode,
   ThreadSummary,
   UiEvent,
 } from "../../shared/types";
 
 const LAST_WORKSPACE_KEY = "codex-desktop:last-workspace";
+const THEME_KEY = "codex-desktop:theme";
+
+function initialTheme(): ThemeMode {
+  const stored = localStorage.getItem(THEME_KEY);
+  return stored === "light" || stored === "dark" || stored === "system"
+    ? stored
+    : "system";
+}
 
 const defaultSettings: CodexSettings = {
   cwd: localStorage.getItem(LAST_WORKSPACE_KEY) ?? "",
@@ -230,6 +239,7 @@ export function App(): React.JSX.Element {
   );
   const [items, setItems] = useState<ChatItem[]>([]);
   const [settings, setSettings] = useState<CodexSettings>(defaultSettings);
+  const [theme, setTheme] = useState<ThemeMode>(initialTheme);
   const [search, setSearch] = useState("");
   const [prompt, setPrompt] = useState("");
   const [loadingThread, setLoadingThread] = useState(false);
@@ -316,6 +326,22 @@ export function App(): React.JSX.Element {
     },
     [loadModels, refreshThreads, search],
   );
+
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const applyTheme = (): void => {
+      const resolved =
+        theme === "system" ? (media.matches ? "dark" : "light") : theme;
+      document.documentElement.dataset.theme = resolved;
+      document.documentElement.style.colorScheme = resolved;
+    };
+
+    localStorage.setItem(THEME_KEY, theme);
+    applyTheme();
+    void window.codex.setTheme(theme);
+    if (theme === "system") media.addEventListener("change", applyTheme);
+    return () => media.removeEventListener("change", applyTheme);
+  }, [theme]);
 
   useEffect(() => {
     const unsubscribe = window.codex.onEvent(handleUiEvent);
@@ -548,6 +574,16 @@ export function App(): React.JSX.Element {
               <option value="read-only">Read only</option>
               <option value="workspace-write">Workspace write</option>
               <option value="danger-full-access">Full access</option>
+            </select>
+            <select
+              className="theme-select"
+              aria-label="Appearance"
+              value={theme}
+              onChange={(event) => setTheme(event.target.value as ThemeMode)}
+            >
+              <option value="system">System theme</option>
+              <option value="light">Light theme</option>
+              <option value="dark">Dark theme</option>
             </select>
           </div>
         </header>

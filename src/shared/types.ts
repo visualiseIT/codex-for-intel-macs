@@ -4,6 +4,8 @@ export type ConnectionState =
 export type SandboxMode =
   "read-only" | "workspace-write" | "danger-full-access";
 
+export type ThemeMode = "system" | "light" | "dark";
+
 export interface CodexSettings {
   cwd: string;
   model: string;
@@ -117,6 +119,7 @@ export type UiEvent =
 
 export interface CodexDesktopApi {
   getConnectionState(): Promise<{ state: ConnectionState; message?: string }>;
+  setTheme(theme: ThemeMode): Promise<void>;
   chooseWorkspace(): Promise<string | null>;
   listThreads(searchTerm?: string): Promise<ThreadSummary[]>;
   listModels(): Promise<ModelOption[]>;

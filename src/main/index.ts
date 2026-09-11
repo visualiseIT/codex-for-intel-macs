@@ -1,6 +1,18 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  nativeTheme,
+  shell,
+} from "electron";
 import { join } from "node:path";
-import type { CodexSettings, StartTurnInput, UiEvent } from "../shared/types";
+import type {
+  CodexSettings,
+  StartTurnInput,
+  ThemeMode,
+  UiEvent,
+} from "../shared/types";
 import { CodexService } from "./codex-service";
 
 const service = new CodexService();
@@ -13,6 +25,12 @@ function sendEvent(event: UiEvent): void {
 
 function registerIpc(): void {
   ipcMain.handle("codex:connection", () => service.getConnectionState());
+  ipcMain.handle("app:set-theme", (_event, theme: ThemeMode) => {
+    nativeTheme.themeSource = theme;
+    mainWindow?.setBackgroundColor(
+      nativeTheme.shouldUseDarkColors ? "#171815" : "#f4f1ea",
+    );
+  });
   ipcMain.handle("codex:choose-workspace", async () => {
     const options: Electron.OpenDialogOptions = {
       properties: ["openDirectory", "createDirectory"],
@@ -56,7 +74,7 @@ function createWindow(): void {
     minWidth: 860,
     minHeight: 620,
     titleBarStyle: "hiddenInset",
-    backgroundColor: "#f4f1ea",
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#171815" : "#f4f1ea",
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
       contextIsolation: true,
