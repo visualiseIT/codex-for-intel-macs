@@ -17,38 +17,38 @@ Build a small Intel-compatible macOS desktop client for the locally installed Co
 
 ### Foundation
 
-- [ ] Scaffold the Electron/React/TypeScript application.
-- [ ] Configure development, type-checking, testing, production builds, and macOS x64 packaging.
-- [ ] Add a secure context-isolated preload API.
+- [x] Scaffold the Electron/React/TypeScript application.
+- [x] Configure development, type-checking, testing, production builds, and macOS x64 packaging.
+- [x] Add a secure context-isolated preload API.
 
 ### Codex integration
 
-- [ ] Start and stop `codex app-server` with the desktop application.
-- [ ] Implement JSON-RPC initialization, request correlation, notifications, server requests, and failure handling.
-- [ ] List persisted CLI, VS Code, exec, and app-server threads.
-- [ ] Start new threads and resume existing threads.
-- [ ] Load turn history and translate Codex items into renderer-friendly chat entries.
-- [ ] Start and interrupt turns.
-- [ ] Stream assistant deltas and tool/file activity into the active conversation.
-- [ ] Surface command and file-change approval requests and return the user's decision.
+- [x] Start and stop `codex app-server` with the desktop application.
+- [x] Implement JSON-RPC initialization, request correlation, notifications, server requests, and failure handling.
+- [x] List persisted CLI, VS Code, exec, and app-server threads.
+- [x] Start new threads and resume existing threads.
+- [x] Load turn history and translate Codex items into renderer-friendly chat entries.
+- [x] Start and interrupt turns.
+- [x] Stream assistant deltas and tool/file activity into the active conversation.
+- [x] Surface command and file-change approval requests and return the user's decision.
 
 ### User interface
 
-- [ ] Add a workspace folder picker and remember the last selection.
-- [ ] Add searchable thread navigation and a new-chat action.
-- [ ] Add a chat timeline for user, assistant, command, file-change, plan, and status entries.
-- [ ] Add a multiline composer with send and stop controls.
-- [ ] Add model, reasoning-effort, and sandbox controls.
-- [ ] Add approval dialogs and clear connection/error states.
-- [ ] Add responsive styling suitable for an Intel Mac desktop window.
+- [x] Add a workspace folder picker and remember the last selection.
+- [x] Add searchable thread navigation and a new-chat action.
+- [x] Add a chat timeline for user, assistant, command, file-change, plan, and status entries.
+- [x] Add a multiline composer with send and stop controls.
+- [x] Add model, reasoning-effort, and sandbox controls.
+- [x] Add approval dialogs and clear connection/error states.
+- [x] Add responsive styling suitable for an Intel Mac desktop window.
 
 ### Quality and handoff
 
-- [ ] Unit-test JSON-RPC framing, request correlation, and history/event normalization.
-- [ ] Run formatting, linting, tests, type-checking, and production build checks.
-- [ ] Smoke-test the integration against the installed Codex CLI.
-- [ ] Document setup, development, packaging, security defaults, and known MVP limitations.
-- [ ] Inspect Git status and commit the finished implementation.
+- [x] Unit-test JSON-RPC framing, request correlation, and history/event normalization.
+- [x] Run formatting, linting, tests, type-checking, and production build checks.
+- [x] Smoke-test the integration against the installed Codex CLI.
+- [x] Document setup, development, packaging, security defaults, and known MVP limitations.
+- [x] Inspect Git status and commit the finished implementation.
 
 ## Deferred until after MVP
 
