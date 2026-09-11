@@ -2,7 +2,10 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { prepareImageAttachments } from "./image-attachments";
+import {
+  prepareFileReferences,
+  prepareImageAttachments,
+} from "./image-attachments";
 
 const directories: string[] = [];
 
@@ -40,5 +43,19 @@ describe("prepareImageAttachments", () => {
     await expect(prepareImageAttachments([path])).rejects.toThrow(
       "not a supported image",
     );
+  });
+
+  it("creates only workspace-relative references for general files", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "codex-files-"));
+    directories.push(directory);
+    const path = join(directory, "notes.txt");
+    await writeFile(path, "notes");
+
+    await expect(prepareFileReferences([path], directory)).resolves.toEqual([
+      "notes.txt",
+    ]);
+    await expect(
+      prepareFileReferences([path], join(directory, "nested")),
+    ).rejects.toThrow("outside the selected workspace");
   });
 });

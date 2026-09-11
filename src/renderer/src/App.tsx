@@ -437,12 +437,41 @@ export function App(): React.JSX.Element {
 
   const attachFiles = async (files: FileList | File[]): Promise<void> => {
     try {
-      const paths = Array.from(files)
+      const selectedFiles = Array.from(files);
+      const imageExtensions = new Set(["gif", "jpeg", "jpg", "png", "webp"]);
+      const imagePaths = selectedFiles
+        .filter((file) =>
+          imageExtensions.has(file.name.split(".").at(-1)?.toLowerCase() ?? ""),
+        )
         .map((file) => window.codex.getDroppedFilePath(file))
         .filter(Boolean);
+      const filePaths = selectedFiles
+        .filter(
+          (file) =>
+            !imageExtensions.has(
+              file.name.split(".").at(-1)?.toLowerCase() ?? "",
+            ),
+        )
+        .map((file) => window.codex.getDroppedFilePath(file))
+        .filter(Boolean);
+      const paths = [...imagePaths, ...filePaths];
       if (!paths.length)
-        throw new Error("Could not read the dropped image path.");
-      addAttachments(await window.codex.prepareImages(paths));
+        throw new Error("Could not read the dropped file path.");
+      if (imagePaths.length)
+        addAttachments(await window.codex.prepareImages(imagePaths));
+      if (filePaths.length) {
+        const references = await window.codex.referenceFiles(
+          filePaths,
+          settings.cwd,
+        );
+        const referenceText = references
+          .map((path) => `- \`${path}\``)
+          .join("\n");
+        setPrompt(
+          (current) =>
+            `${current}${current.trim() ? "\n\n" : ""}Please inspect these workspace files:\n${referenceText}`,
+        );
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     }

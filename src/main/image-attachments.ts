@@ -1,5 +1,12 @@
 import { readFile, stat } from "node:fs/promises";
-import { basename, extname, isAbsolute } from "node:path";
+import {
+  basename,
+  extname,
+  isAbsolute,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
 import type { ImageAttachment } from "../shared/types";
 
 const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
@@ -42,6 +49,34 @@ export async function prepareImageAttachments(
         size: metadata.size,
         dataUrl: `data:${mime};base64,${data.toString("base64")}`,
       };
+    }),
+  );
+}
+
+export async function prepareFileReferences(
+  paths: string[],
+  cwd: string,
+): Promise<string[]> {
+  if (!Array.isArray(paths) || paths.some((path) => typeof path !== "string"))
+    throw new Error("Invalid file selection.");
+  if (!cwd || !isAbsolute(cwd))
+    throw new Error("Choose a workspace before referencing files.");
+  const workspace = resolve(cwd);
+  return Promise.all(
+    paths.map(async (path) => {
+      const fullPath = resolve(path);
+      const workspacePath = relative(workspace, fullPath);
+      if (
+        !workspacePath ||
+        workspacePath === ".." ||
+        workspacePath.startsWith(`..${sep}`) ||
+        isAbsolute(workspacePath)
+      )
+        throw new Error(`${basename(path)} is outside the selected workspace.`);
+      const metadata = await stat(fullPath);
+      if (!metadata.isFile())
+        throw new Error(`${basename(path)} is not a file.`);
+      return workspacePath;
     }),
   );
 }

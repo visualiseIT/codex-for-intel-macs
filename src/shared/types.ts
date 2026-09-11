@@ -179,6 +179,7 @@ export interface CodexDesktopApi {
   chooseWorkspace(): Promise<string | null>;
   chooseImages(): Promise<ImageAttachment[]>;
   prepareImages(paths: string[]): Promise<ImageAttachment[]>;
+  referenceFiles(paths: string[], cwd: string): Promise<string[]>;
   getDroppedFilePath(file: File): string;
   listThreads(input?: ThreadListInput): Promise<ThreadPage>;
   listModels(): Promise<ModelOption[]>;

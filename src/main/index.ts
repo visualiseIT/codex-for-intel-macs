@@ -15,7 +15,10 @@ import type {
   UiEvent,
 } from "../shared/types";
 import { CodexService } from "./codex-service";
-import { prepareImageAttachments } from "./image-attachments";
+import {
+  prepareFileReferences,
+  prepareImageAttachments,
+} from "./image-attachments";
 
 const service = new CodexService();
 let mainWindow: BrowserWindow | null = null;
@@ -58,6 +61,10 @@ function registerIpc(): void {
   });
   ipcMain.handle("codex:prepare-images", (_event, paths: string[]) =>
     prepareImageAttachments(paths),
+  );
+  ipcMain.handle(
+    "codex:reference-files",
+    (_event, paths: string[], cwd: string) => prepareFileReferences(paths, cwd),
   );
   ipcMain.handle("codex:list-threads", (_event, input?: ThreadListInput) =>
     service.listThreads(input),
