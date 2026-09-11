@@ -1,0 +1,8 @@
+export function isNearBottom(
+  scrollHeight: number,
+  scrollTop: number,
+  clientHeight: number,
+  threshold = 72,
+): boolean {
+  return scrollHeight - scrollTop - clientHeight < threshold;
+}

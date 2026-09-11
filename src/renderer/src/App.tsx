@@ -28,6 +28,7 @@ import {
 } from "./Dialogs";
 import { DiffView } from "./DiffView";
 import { RichText } from "./RichText";
+import { isNearBottom } from "./scroll";
 
 const LAST_WORKSPACE_KEY = "codex-desktop:last-workspace";
 const THEME_KEY = "codex-desktop:theme";
@@ -123,8 +124,12 @@ function MessageContent({
 }: {
   item: ChatItem;
 }): React.JSX.Element | null {
-  if (item.kind === "file" && item.changes?.length)
-    return <DiffView changes={item.changes} />;
+  if (item.kind === "file")
+    return item.changes?.length ? (
+      <DiffView changes={item.changes} />
+    ) : item.text ? (
+      <ActivityOutput text={item.text} />
+    ) : null;
   if (
     item.kind === "assistant" ||
     item.kind === "plan" ||
@@ -163,8 +168,10 @@ export function App(): React.JSX.Element {
   const [usage, setUsage] = useState<UsageInfo | null>(null);
   const [diagnostics, setDiagnostics] = useState<CodexDiagnostics | null>(null);
   const [error, setError] = useState("");
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const activeThreadRef = useRef<string | null>(null);
   const promptRef = useRef<HTMLTextAreaElement | null>(null);
+  const stickToBottomRef = useRef(true);
   const endRef = useRef<HTMLDivElement | null>(null);
 
   const selectedModel = models.find((model) => model.id === settings.model);
@@ -368,7 +375,8 @@ export function App(): React.JSX.Element {
   }, [prompt]);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (stickToBottomRef.current)
+      endRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
   }, [items]);
 
   const openThread = async (thread: ThreadSummary): Promise<void> => {
@@ -378,6 +386,8 @@ export function App(): React.JSX.Element {
     }
     setLoadingThread(true);
     setError("");
+    stickToBottomRef.current = true;
+    setShowJumpToLatest(false);
     try {
       const result = await window.codex.openThread(thread.id);
       activeThreadRef.current = result.thread.id;
@@ -401,6 +411,8 @@ export function App(): React.JSX.Element {
     clearConversation();
     setAttachments([]);
     setError("");
+    stickToBottomRef.current = true;
+    setShowJumpToLatest(false);
     promptRef.current?.focus();
   };
 
@@ -494,6 +506,8 @@ export function App(): React.JSX.Element {
     setAttachments([]);
     setError("");
     setRunning(true);
+    stickToBottomRef.current = true;
+    setShowJumpToLatest(false);
     try {
       let thread = selectedThread;
       if (!thread) {
@@ -808,7 +822,19 @@ export function App(): React.JSX.Element {
           </div>
         </header>
 
-        <section className="conversation">
+        <section
+          className="conversation"
+          onScroll={(event) => {
+            const element = event.currentTarget;
+            const nearBottom = isNearBottom(
+              element.scrollHeight,
+              element.scrollTop,
+              element.clientHeight,
+            );
+            stickToBottomRef.current = nearBottom;
+            setShowJumpToLatest(!nearBottom);
+          }}
+        >
           {loadingThread ? (
             <div className="center-state">
               <span className="spinner" /> Loading conversation…
@@ -890,6 +916,21 @@ export function App(): React.JSX.Element {
               <div ref={endRef} />
             </div>
           )}
+          {showJumpToLatest ? (
+            <button
+              className="jump-to-latest"
+              onClick={() => {
+                stickToBottomRef.current = true;
+                setShowJumpToLatest(false);
+                endRef.current?.scrollIntoView({
+                  behavior: "smooth",
+                  block: "end",
+                });
+              }}
+            >
+              ↓ Jump to latest
+            </button>
+          ) : null}
         </section>
 
         <footer className="composer-area">
@@ -932,9 +973,7 @@ export function App(): React.JSX.Element {
               <button
                 className="attach-button"
                 onClick={() => void chooseImages()}
-                disabled={
-                  !supportsImages || running || connection !== "connected"
-                }
+                disabled={!supportsImages || connection !== "connected"}
                 title={
                   supportsImages
                     ? "Attach images"
@@ -952,17 +991,19 @@ export function App(): React.JSX.Element {
                     void attachFiles(event.clipboardData.files);
                 }}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
+                  if (event.key === "Enter" && !event.shiftKey && !running) {
                     event.preventDefault();
                     void sendPrompt();
                   }
                 }}
                 placeholder={
                   connection === "connected"
-                    ? "Message Codex…"
+                    ? running
+                      ? "Draft your next message…"
+                      : "Message Codex…"
                     : "Waiting for Codex…"
                 }
-                disabled={connection !== "connected" || running}
+                disabled={connection !== "connected"}
                 rows={1}
               />
               {running ? (

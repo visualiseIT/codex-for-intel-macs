@@ -32,7 +32,7 @@ function DiffFile({ change }: { change: FileChange }): React.JSX.Element {
   };
 
   return (
-    <details className="diff-file" open>
+    <details className="diff-file">
       <summary>
         <span className="diff-kind">{change.kind}</span>
         <strong>{change.path}</strong>

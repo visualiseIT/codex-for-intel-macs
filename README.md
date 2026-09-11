@@ -18,6 +18,10 @@ A small local macOS desktop client for the Codex CLI, designed to be packaged fo
 - Safe workspace-relative references when non-image files are dropped into the composer.
 - Optional ChatGPT usage display plus reconnect and redacted diagnostics controls.
 - A composer that grows naturally for multiline prompts before it begins scrolling.
+- Drafting the next prompt while a turn is still running.
+- User-controlled conversation scrolling with a **Jump to latest** shortcut.
+- File-change details collapsed by default to keep long conversations navigable.
+- A distinctive custom Dock and application icon.
 - Conservative defaults: workspace-write access, no sandbox network access, and on-request approvals.
 
 Codex remains the source of truth for thread history and authentication. The app only remembers UI preferences such as the selected workspace, theme, and locally pinned thread IDs. Pinning is local in this release because the installed Codex CLI schema does not yet expose server-side pin metadata.
@@ -30,6 +34,8 @@ Codex remains the source of truth for thread history and authentication. The app
 - An authenticated Codex CLI session (`codex` should already work in Terminal).
 
 The application looks for `codex` in `PATH`, common Homebrew/npm locations, and installed NVM Node versions. It also preserves the discovered NVM binary directory when launching Codex, because macOS GUI applications do not inherit the Terminal's full `PATH`. If it cannot locate the CLI, set `CODEX_BINARY` to its absolute path before launching.
+
+The microphone/dictation control remains deferred: a dependable implementation needs explicit microphone permissions and a supported transcription service or native speech integration.
 
 ## Run locally
 

@@ -82,6 +82,15 @@ Turn the functional MVP into a comfortable daily-driver desktop client. Version 
 
 ## P1 — Coding workflows
 
+### Follow-up interaction polish
+
+- [x] Stop automatic scrolling when the user moves away from the bottom of an active conversation.
+- [x] Add a **Jump to latest** control while new output continues below.
+- [x] Collapse file-change patches by default while keeping their summaries visible.
+- [x] Keep the composer editable for drafting while the active turn is running.
+- [x] Add a custom Intel macOS application and Dock icon.
+- [ ] Add microphone dictation after choosing a dependable transcription approach and permission flow.
+
 ### Active-turn steering
 
 - [ ] Allow another message while a turn is running.
