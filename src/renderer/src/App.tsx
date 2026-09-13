@@ -1,11 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ChatItem,
   CodexDiagnostics,
@@ -147,7 +140,7 @@ function upsertItem(items: ChatItem[], incoming: ChatItem): ChatItem[] {
   return next;
 }
 
-function MessageContent({
+const MessageContent = memo(function MessageContent({
   item,
 }: {
   item: ChatItem;
@@ -167,7 +160,37 @@ function MessageContent({
   if (item.kind === "command" || item.kind === "tool")
     return item.text ? <ActivityOutput text={item.text} /> : null;
   return item.text ? <pre className="plain-message">{item.text}</pre> : null;
-}
+});
+
+const AttachmentStrip = memo(function AttachmentStrip({
+  attachments,
+  onRemove,
+}: {
+  attachments: ImageAttachment[];
+  onRemove: (path: string) => void;
+}): React.JSX.Element | null {
+  if (!attachments.length) return null;
+  return (
+    <div className="attachment-strip">
+      {attachments.map((attachment) => (
+        <div
+          className="attachment"
+          key={attachment.path}
+          title={attachment.path}
+        >
+          <img src={attachment.dataUrl} alt="" />
+          <span>{attachment.name}</span>
+          <button
+            onClick={() => onRemove(attachment.path)}
+            aria-label={`Remove ${attachment.name}`}
+          >
+            ×
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+});
 
 export function App(): React.JSX.Element {
   const [connection, setConnection] = useState<ConnectionState>("connecting");
@@ -499,20 +522,6 @@ export function App(): React.JSX.Element {
     };
   }, []);
 
-  useLayoutEffect(() => {
-    const textarea = promptRef.current;
-    if (!textarea) return;
-    if (!prompt) {
-      textarea.style.height = "28px";
-      textarea.style.overflowY = "hidden";
-      return;
-    }
-    textarea.style.height = "auto";
-    const height = Math.min(Math.max(textarea.scrollHeight, 28), 180);
-    textarea.style.height = `${height}px`;
-    textarea.style.overflowY = textarea.scrollHeight > 180 ? "auto" : "hidden";
-  }, [prompt]);
-
   useEffect(() => {
     const known = new Set(threadContext.map((thread) => thread.id));
     const missing = threadContext
@@ -611,22 +620,29 @@ export function App(): React.JSX.Element {
   const beginSidebarResize = (event: React.PointerEvent): void => {
     if (sidebarCollapsed) return;
     event.preventDefault();
+    const handle = event.currentTarget as HTMLElement;
+    handle.setPointerCapture(event.pointerId);
     const startX = event.clientX;
     const startWidth = sidebarWidth;
     const move = (moveEvent: PointerEvent): void => {
+      const maximum = Math.min(480, Math.max(220, window.innerWidth - 520));
       const width = Math.min(
         Math.max(startWidth + moveEvent.clientX - startX, 220),
-        480,
+        maximum,
       );
       setSidebarWidth(width);
       localStorage.setItem(SIDEBAR_WIDTH_KEY, String(width));
     };
     const stop = (): void => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", stop);
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", stop);
+      handle.removeEventListener("pointercancel", stop);
+      handle.removeEventListener("lostpointercapture", stop);
     };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", stop);
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", stop);
+    handle.addEventListener("pointercancel", stop);
+    handle.addEventListener("lostpointercapture", stop);
   };
 
   const toggleSidebar = (): void => {
@@ -667,6 +683,12 @@ export function App(): React.JSX.Element {
       return next.slice(0, 8);
     });
   };
+
+  const removeAttachment = useCallback((path: string): void => {
+    setAttachments((current) =>
+      current.filter((attachment) => attachment.path !== path),
+    );
+  }, []);
 
   const chooseImages = async (): Promise<void> => {
     try {
@@ -1481,32 +1503,10 @@ export function App(): React.JSX.Element {
                 ))}
               </div>
             ) : null}
-            {attachments.length ? (
-              <div className="attachment-strip">
-                {attachments.map((attachment) => (
-                  <div
-                    className="attachment"
-                    key={attachment.path}
-                    title={attachment.path}
-                  >
-                    <img src={attachment.dataUrl} alt="" />
-                    <span>{attachment.name}</span>
-                    <button
-                      onClick={() =>
-                        setAttachments((current) =>
-                          current.filter(
-                            (item) => item.path !== attachment.path,
-                          ),
-                        )
-                      }
-                      aria-label={`Remove ${attachment.name}`}
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : null}
+            <AttachmentStrip
+              attachments={attachments}
+              onRemove={removeAttachment}
+            />
             <div className="composer-input-row">
               <button
                 className="attach-button"

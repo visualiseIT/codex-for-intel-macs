@@ -44,11 +44,17 @@ button {
 .sidebar {
   position: relative;
   display: flex;
+  min-width: 0;
   min-height: 0;
   flex-direction: column;
+  overflow: hidden;
   border-right: 1px solid #dcd8cd;
   background: #eae7df;
   -webkit-app-region: drag;
+}
+.sidebar > * {
+  min-width: 0;
+  max-width: 100%;
 }
 .sidebar-toggle {
   width: 25px;
@@ -124,6 +130,14 @@ button {
   font-size: 15px;
   letter-spacing: -0.01em;
 }
+.brand-copy,
+.new-chat-label,
+.connection-copy {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .brand-row small {
   display: block;
   margin-top: 1px;
@@ -184,6 +198,7 @@ button {
 }
 .search-wrap input {
   width: 100%;
+  min-width: 0;
   border: 0;
   outline: 0;
   color: #38362f;
@@ -202,13 +217,22 @@ button {
   text-transform: uppercase;
 }
 .thread-list {
+  min-width: 0;
   min-height: 0;
   padding: 0 8px;
+  overflow-x: hidden;
   overflow-y: auto;
   -webkit-app-region: no-drag;
 }
 .thread-project + .thread-project {
   margin-top: 5px;
+}
+.thread-project,
+.thread-row-wrap,
+.thread-row,
+.thread-title,
+.thread-meta {
+  min-width: 0;
 }
 .project-header {
   display: flex;
@@ -326,18 +350,23 @@ button {
 
 .main-panel {
   display: grid;
+  width: 100%;
   min-width: 0;
   min-height: 0;
   grid-template-rows: 54px minmax(0, 1fr) auto;
+  overflow: hidden;
   background: #f7f5ef;
+  container-type: inline-size;
 }
 .toolbar {
   display: flex;
+  min-width: 0;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   padding: 7px 16px 7px 22px;
   border-bottom: 1px solid #e0ddd4;
+  overflow: hidden;
   -webkit-app-region: drag;
 }
 .workspace-button,
@@ -359,6 +388,7 @@ button {
 }
 .toolbar-context {
   display: flex;
+  flex: 1 1 auto;
   min-width: 0;
   align-items: center;
   gap: 5px;
@@ -392,6 +422,11 @@ button {
 .workspace-button:hover {
   background: #ebe8e0;
 }
+.workspace-button span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .folder-icon {
   color: #877d6b;
   font-size: 18px;
@@ -399,6 +434,7 @@ button {
 }
 .toolbar-controls {
   display: flex;
+  flex: 0 1 auto;
   min-width: 0;
   gap: 6px;
   -webkit-app-region: no-drag;
@@ -427,11 +463,14 @@ button {
 
 .conversation {
   position: relative;
+  width: 100%;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
 }
 .welcome {
   display: flex;
+  width: 100%;
   height: 100%;
   max-width: 650px;
   margin: auto;
@@ -462,11 +501,12 @@ button {
 }
 .suggestions {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 9px;
   margin-top: 31px;
 }
 .suggestions button {
+  min-width: 0;
   min-height: 70px;
   padding: 12px;
   border: 1px solid #ddd8cc;
@@ -506,6 +546,7 @@ button {
 }
 
 .messages {
+  max-width: calc(100% - 48px);
   width: min(780px, calc(100% - 48px));
   margin: 0 auto;
   padding: 30px 0 18px;
@@ -685,12 +726,15 @@ button {
 }
 
 .composer-area {
+  min-width: 0;
+  overflow: hidden;
   padding: 8px 28px 16px;
   background: linear-gradient(transparent, #f7f5ef 18%);
 }
 .composer {
   display: flex;
   width: min(780px, 100%);
+  min-width: 0;
   margin: auto;
   align-items: flex-end;
   gap: 10px;
@@ -1595,13 +1639,16 @@ button {
 }
 .composer-input-row {
   display: flex;
+  min-width: 0;
   align-items: flex-end;
   gap: 9px;
 }
 .composer textarea {
-  height: 28px;
+  height: auto;
   max-height: 180px;
-  transition: height 90ms ease;
+  min-width: 0;
+  field-sizing: content;
+  overflow-y: auto;
 }
 .attach-button {
   display: grid;
@@ -2030,5 +2077,31 @@ button {
 @media (max-width: 1010px) {
   .toolbar-controls select[aria-label="Sandbox mode"] {
     display: none;
+  }
+}
+
+@container (max-width: 850px) {
+  .usage-pill,
+  .theme-select {
+    display: none;
+  }
+}
+
+@container (max-width: 720px) {
+  .toolbar-controls select[aria-label="Sandbox mode"] {
+    display: none;
+  }
+  .suggestions {
+    grid-template-columns: 1fr;
+  }
+}
+
+@container (max-width: 590px) {
+  .toolbar-controls select[aria-label="Reasoning effort"] {
+    display: none;
+  }
+  .toolbar {
+    padding-left: 10px;
+    padding-right: 10px;
   }
 }
