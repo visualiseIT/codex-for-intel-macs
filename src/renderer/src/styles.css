@@ -2098,8 +2098,7 @@ button {
 }
 
 @media (max-width: 1120px) {
-  .usage-pill,
-  .theme-select {
+  .usage-pill {
     display: none;
   }
 }
@@ -2111,8 +2110,7 @@ button {
 }
 
 @container (max-width: 850px) {
-  .usage-pill,
-  .theme-select {
+  .usage-pill {
     display: none;
   }
 }

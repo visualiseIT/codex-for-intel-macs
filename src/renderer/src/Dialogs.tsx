@@ -3,6 +3,7 @@ import type {
   CodexDiagnostics,
   NotificationPreferences,
   PendingInteraction,
+  ThemeMode,
   ThreadGoal,
   ThreadGoalStatus,
   ThreadSummary,
@@ -373,13 +374,17 @@ export function GoalDialog({
 export function SettingsDialog({
   notifications,
   transcription,
+  theme,
   onClose,
+  onThemeChange,
   onNotificationsChange,
   onApiKeyChange,
 }: {
   notifications: NotificationPreferences;
   transcription: TranscriptionStatus;
+  theme: ThemeMode;
   onClose: () => void;
+  onThemeChange: (theme: ThemeMode) => void;
   onNotificationsChange: (
     preferences: NotificationPreferences,
   ) => Promise<void>;
@@ -423,7 +428,23 @@ export function SettingsDialog({
         onMouseDown={(event) => event.stopPropagation()}
       >
         <span className="eyebrow">Desktop settings</span>
-        <h2>Notifications & dictation</h2>
+        <h2>Preferences</h2>
+        <div className="settings-section">
+          <strong>Appearance</strong>
+          <label className="settings-field">
+            <span>Theme</span>
+            <select
+              value={theme}
+              onChange={(event) =>
+                onThemeChange(event.target.value as ThemeMode)
+              }
+            >
+              <option value="system">Use system setting</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </label>
+        </div>
         <div className="settings-section">
           <strong>Notifications</strong>
           <label className="settings-check">

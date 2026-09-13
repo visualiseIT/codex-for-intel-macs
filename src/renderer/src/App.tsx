@@ -1358,16 +1358,6 @@ export function App(): React.JSX.Element {
               <option value="workspace-write">Workspace write</option>
               <option value="danger-full-access">Full access</option>
             </select>
-            <select
-              className="theme-select"
-              aria-label="Appearance"
-              value={theme}
-              onChange={(event) => setTheme(event.target.value as ThemeMode)}
-            >
-              <option value="system">System theme</option>
-              <option value="light">Light theme</option>
-              <option value="dark">Dark theme</option>
-            </select>
             <button
               className="settings-button"
               onClick={() => setSettingsOpen(true)}
@@ -1745,7 +1735,9 @@ export function App(): React.JSX.Element {
         <SettingsDialog
           notifications={notificationPreferences}
           transcription={transcriptionStatus}
+          theme={theme}
           onClose={() => setSettingsOpen(false)}
+          onThemeChange={setTheme}
           onNotificationsChange={async (preferences) => {
             await window.codex.setNotificationPreferences(preferences);
             setNotificationPreferences(preferences);
