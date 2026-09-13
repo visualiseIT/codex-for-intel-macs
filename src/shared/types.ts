@@ -22,6 +22,7 @@ export interface ThreadSummary {
   createdAt: number;
   updatedAt: number;
   status: string;
+  forkedFromId: string | null;
 }
 
 export interface ThreadListInput {
@@ -59,6 +60,7 @@ export interface ChatItem {
   text: string;
   status?: string;
   changes?: FileChange[];
+  turnId?: string;
 }
 
 export interface ModelOption {
@@ -91,6 +93,51 @@ export interface StartTurnInput extends CodexSettings {
 
 export interface StartTurnResult {
   turnId: string;
+}
+
+export interface SteerTurnInput extends StartTurnInput {
+  expectedTurnId: string;
+}
+
+export interface QueuedPrompt {
+  id: string;
+  text: string;
+  imageCount: number;
+}
+
+export type ThreadGoalStatus =
+  | "active"
+  | "paused"
+  | "blocked"
+  | "usageLimited"
+  | "budgetLimited"
+  | "complete";
+
+export interface ThreadGoal {
+  threadId: string;
+  objective: string;
+  status: ThreadGoalStatus;
+  tokenBudget: number | null;
+  tokensUsed: number;
+  timeUsedSeconds: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface NotificationPreferences {
+  turnCompleted: boolean;
+  attentionRequired: boolean;
+}
+
+export interface TranscriptionStatus {
+  configured: boolean;
+  source: "environment" | "keychain" | "none";
+  model: string;
+}
+
+export interface DictationAudio {
+  bytes: Uint8Array;
+  mimeType: string;
 }
 
 export interface RateLimitWindow {
@@ -171,6 +218,10 @@ export type UiEvent =
       action: "changed" | "archived" | "unarchived" | "deleted";
     }
   | { type: "usage"; usage: UsageInfo | null }
+  | { type: "queue-changed"; threadId: string }
+  | { type: "goal"; threadId: string; goal: ThreadGoal | null }
+  | { type: "compacted"; threadId: string; turnId: string }
+  | { type: "focus-thread"; threadId: string }
   | { type: "error"; message: string; threadId?: string };
 
 export interface CodexDesktopApi {
@@ -189,8 +240,30 @@ export interface CodexDesktopApi {
   archiveThread(threadId: string): Promise<void>;
   unarchiveThread(threadId: string): Promise<void>;
   deleteThread(threadId: string): Promise<void>;
+  forkThread(threadId: string, lastTurnId?: string): Promise<ThreadSummary>;
+  compactThread(threadId: string): Promise<void>;
+  getThreadGoal(threadId: string): Promise<ThreadGoal | null>;
+  setThreadGoal(
+    threadId: string,
+    objective: string,
+    status: ThreadGoalStatus,
+    tokenBudget: number | null,
+  ): Promise<ThreadGoal>;
+  clearThreadGoal(threadId: string): Promise<void>;
   startTurn(input: StartTurnInput): Promise<StartTurnResult>;
+  steerTurn(input: SteerTurnInput): Promise<StartTurnResult>;
+  queuePrompt(input: StartTurnInput): Promise<QueuedPrompt>;
+  listQueuedPrompts(threadId: string): Promise<QueuedPrompt[]>;
+  deleteQueuedPrompt(threadId: string, queuedPromptId: string): Promise<void>;
+  startNextQueuedPrompt(threadId: string): Promise<StartTurnResult | null>;
   interruptTurn(threadId: string, turnId: string): Promise<void>;
+  getNotificationPreferences(): Promise<NotificationPreferences>;
+  setNotificationPreferences(
+    preferences: NotificationPreferences,
+  ): Promise<void>;
+  getTranscriptionStatus(): Promise<TranscriptionStatus>;
+  setTranscriptionApiKey(apiKey: string): Promise<TranscriptionStatus>;
+  transcribeAudio(audio: DictationAudio): Promise<string>;
   getUsage(): Promise<UsageInfo | null>;
   getDiagnostics(): Promise<CodexDiagnostics>;
   reconnect(): Promise<void>;

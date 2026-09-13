@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { randomUUID } from "node:crypto";
 import type {
   CodexSettings,
   CodexDiagnostics,
@@ -6,8 +7,12 @@ import type {
   ModelOption,
   OpenThreadResult,
   PendingInteraction,
+  QueuedPrompt,
   StartTurnInput,
   StartTurnResult,
+  SteerTurnInput,
+  ThreadGoal,
+  ThreadGoalStatus,
   ThreadListInput,
   ThreadPage,
   ThreadSummary,
@@ -42,6 +47,51 @@ function string(value: unknown, fallback = ""): string {
 
 function number(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function turnInput(input: StartTurnInput): unknown[] {
+  return [
+    ...(input.prompt
+      ? [{ type: "text", text: input.prompt, text_elements: [] }]
+      : []),
+    ...input.imagePaths.map((path) => ({ type: "localImage", path })),
+  ];
+}
+
+function normalizeGoal(value: unknown): ThreadGoal | null {
+  const goal = record(value);
+  const threadId = string(goal.threadId);
+  const objective = string(goal.objective);
+  if (!threadId || !objective) return null;
+  return {
+    threadId,
+    objective,
+    status: string(goal.status, "active") as ThreadGoalStatus,
+    tokenBudget: number(goal.tokenBudget),
+    tokensUsed: number(goal.tokensUsed) ?? 0,
+    timeUsedSeconds: number(goal.timeUsedSeconds) ?? 0,
+    createdAt: number(goal.createdAt) ?? 0,
+    updatedAt: number(goal.updatedAt) ?? 0,
+  };
+}
+
+function normalizeQueuedPrompt(value: unknown): QueuedPrompt {
+  const queued = record(value);
+  const input = Array.isArray(queued.input) ? queued.input : [];
+  const texts = input
+    .map(record)
+    .filter((part) => part.type === "text")
+    .map((part) => string(part.text))
+    .filter(Boolean);
+  const imageCount = input.filter((part) => {
+    const type = record(part).type;
+    return type === "image" || type === "localImage";
+  }).length;
+  return {
+    id: string(queued.id),
+    text: texts.join("\n"),
+    imageCount,
+  };
 }
 
 export function normalizeUsage(value: unknown): UsageInfo | null {
@@ -233,15 +283,60 @@ export class CodexService extends EventEmitter {
     await this.process.request("thread/delete", { threadId });
   }
 
+  async forkThread(
+    threadId: string,
+    lastTurnId?: string,
+  ): Promise<ThreadSummary> {
+    const result = await this.process.request<UnknownRecord>("thread/fork", {
+      threadId,
+      ...(lastTurnId ? { lastTurnId } : {}),
+      excludeTurns: true,
+      deferGoalContinuation: true,
+      threadSource: "codex-desktop-intel",
+    });
+    return normalizeThread(result.thread);
+  }
+
+  async compactThread(threadId: string): Promise<void> {
+    await this.process.request("thread/compact/start", { threadId });
+  }
+
+  async getThreadGoal(threadId: string): Promise<ThreadGoal | null> {
+    const result = await this.process.request<UnknownRecord>(
+      "thread/goal/get",
+      { threadId },
+    );
+    return normalizeGoal(result.goal);
+  }
+
+  async setThreadGoal(
+    threadId: string,
+    objective: string,
+    status: ThreadGoalStatus,
+    tokenBudget: number | null,
+  ): Promise<ThreadGoal> {
+    const result = await this.process.request<UnknownRecord>(
+      "thread/goal/set",
+      {
+        threadId,
+        objective,
+        status,
+        tokenBudget,
+      },
+    );
+    const goal = normalizeGoal(result.goal);
+    if (!goal) throw new Error("Codex returned an invalid thread goal.");
+    return goal;
+  }
+
+  async clearThreadGoal(threadId: string): Promise<void> {
+    await this.process.request("thread/goal/clear", { threadId });
+  }
+
   async startTurn(input: StartTurnInput): Promise<StartTurnResult> {
     const result = await this.process.request<UnknownRecord>("turn/start", {
       threadId: input.threadId,
-      input: [
-        ...(input.prompt
-          ? [{ type: "text", text: input.prompt, text_elements: [] }]
-          : []),
-        ...input.imagePaths.map((path) => ({ type: "localImage", path })),
-      ],
+      input: turnInput(input),
       cwd: input.cwd,
       approvalPolicy: "on-request",
       sandboxPolicy: sandboxPolicy(input),
@@ -250,6 +345,62 @@ export class CodexService extends EventEmitter {
     });
     const turn = record(result.turn);
     return { turnId: string(turn.id) };
+  }
+
+  async steerTurn(input: SteerTurnInput): Promise<StartTurnResult> {
+    const result = await this.process.request<UnknownRecord>("turn/steer", {
+      threadId: input.threadId,
+      input: turnInput(input),
+      expectedTurnId: input.expectedTurnId,
+      clientUserMessageId: randomUUID(),
+    });
+    return { turnId: string(result.turnId, input.expectedTurnId) };
+  }
+
+  async queuePrompt(input: StartTurnInput): Promise<QueuedPrompt> {
+    const result = await this.process.request<UnknownRecord>(
+      "thread/queue/add",
+      {
+        threadId: input.threadId,
+        input: turnInput(input),
+        clientUserMessageId: randomUUID(),
+      },
+    );
+    return normalizeQueuedPrompt(result.queuedSubmission);
+  }
+
+  async listQueuedPrompts(threadId: string): Promise<QueuedPrompt[]> {
+    const result = await this.process.request<UnknownRecord>(
+      "thread/queue/list",
+      { threadId, limit: 100 },
+    );
+    return Array.isArray(result.data)
+      ? result.data.map(normalizeQueuedPrompt)
+      : [];
+  }
+
+  async deleteQueuedPrompt(
+    threadId: string,
+    queuedPromptId: string,
+  ): Promise<void> {
+    await this.process.request("thread/queue/delete", {
+      threadId,
+      queuedSubmissionId: queuedPromptId,
+    });
+  }
+
+  async startNextQueuedPrompt(
+    threadId: string,
+  ): Promise<StartTurnResult | null> {
+    const queued = await this.listQueuedPrompts(threadId);
+    if (!queued.length) return null;
+    const result = await this.process.request<UnknownRecord>(
+      "thread/queue/start",
+      { threadId, queuedSubmissionId: queued[0].id },
+    );
+    const turn = record(result.turn);
+    const turnId = string(turn.id);
+    return turnId ? { turnId } : null;
   }
 
   async interruptTurn(threadId: string, turnId: string): Promise<void> {

@@ -2,7 +2,8 @@
 
 ## Status
 
-- Current patch release: `0.2.1`
+- Last packaged release: `0.2.1`
+- Current development: post-`0.2.1`; assign the next patch version only immediately before an explicitly approved distributable rebuild.
 - Planning status: P0 implemented; manual packaged-app validation pending
 - Baseline: the `0.1.1` MVP launches Codex correctly from a packaged Intel macOS app, loads persisted threads, streams conversations, supports approvals and user questions, and provides system/light/dark themes.
 - First real chat through the custom desktop UI confirmed on 11 September 2026.
@@ -86,19 +87,21 @@ Turn the functional MVP into a comfortable daily-driver desktop client. Version 
 
 - [x] Stop automatic scrolling when the user moves away from the bottom of an active conversation.
 - [x] Add a **Jump to latest** control while new output continues below.
+- [x] Add a **Previous prompt** control that appears after the user scrolls away from the latest output.
 - [x] Collapse file-change patches by default while keeping their summaries visible.
 - [x] Keep the composer editable for drafting while the active turn is running.
 - [x] Add a custom Intel macOS application and Dock icon.
-- [ ] Add microphone dictation after choosing a dependable transcription approach and permission flow.
+- [x] Add push-to-record microphone dictation through the OpenAI Audio transcription service, with explicit permission and encrypted API-key storage.
 
 ### Active-turn steering
 
-- [ ] Allow another message while a turn is running.
-- [ ] Send it through `turn/steer` with the expected active turn ID.
-- [ ] Visually distinguish steering instructions from new turns.
-- [ ] Fall back cleanly when the turn finishes before the steering request arrives.
+- [x] Allow another message while a turn is running.
+- [x] Send it through `turn/steer` with the expected active turn ID.
+- [x] Visually distinguish **Steer now** from **Queue next** and stopping the turn.
+- [x] Queue prompts persistently through `thread/queue/*` and start the next one after the active turn completes.
+- [x] Keep failed steering or queue requests in the composer so the draft is never discarded.
 
-### Dedicated review mode
+### Dedicated review mode — deferred by request
 
 - [ ] Add a **Review changes** action backed by `review/start`.
 - [ ] Support uncommitted changes, base branch, commit, and custom review targets.
@@ -108,18 +111,18 @@ Turn the functional MVP into a comfortable daily-driver desktop client. Version 
 
 ### Conversation controls
 
-- [ ] Fork a thread, optionally from a selected turn, through `thread/fork`.
-- [ ] Surface the parent/fork relationship in the thread UI.
-- [ ] Add manual conversation compaction through `thread/compact/start`.
-- [ ] Render compaction progress and completion without duplicating timeline items.
-- [ ] Add thread goal view/set/clear controls when supported by the installed CLI.
+- [x] Fork a thread, optionally from a selected turn, through `thread/fork`.
+- [x] Surface the parent/fork relationship in the thread UI.
+- [x] Add manual conversation compaction through `thread/compact/start`.
+- [x] Render compaction completion without duplicating timeline items.
+- [x] Add thread goal view/set/clear controls when supported by the installed CLI.
 
 ### Desktop notifications
 
-- [ ] Notify when a long-running turn completes while the app is unfocused.
-- [ ] Notify when Codex is waiting for approval or user input.
-- [ ] Add notification preferences and avoid duplicate notifications.
-- [ ] Clicking a notification should focus the relevant thread.
+- [x] Notify when a long-running turn completes while the app is unfocused.
+- [x] Notify when Codex is waiting for approval or user input.
+- [x] Add notification preferences and avoid duplicate notifications.
+- [x] Clicking a notification should focus the relevant thread.
 
 ## P2 — Stretch features
 
@@ -140,7 +143,7 @@ Turn the functional MVP into a comfortable daily-driver desktop client. Version 
 ### Convenience features
 
 - [ ] Add configurable keyboard shortcuts and a command palette.
-- [ ] Add voice-to-text prompt input with an explicit recording state.
+- [x] Add voice-to-text prompt input with explicit recording and transcription states.
 - [ ] Support multiple open workspaces or windows without mixing thread state.
 
 ## Deferred beyond v0.2

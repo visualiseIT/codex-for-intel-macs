@@ -28,16 +28,19 @@ describe("Codex protocol normalization", () => {
       createdAt: 10,
       updatedAt: 20,
       status: "notLoaded",
+      forkedFromId: null,
     });
   });
 
   it("maps conversation items and sorts turns oldest first", () => {
     const items = normalizeTurns([
       {
+        id: "turn-2",
         startedAt: 20,
         items: [{ type: "agentMessage", id: "a", text: "Done" }],
       },
       {
+        id: "turn-1",
         startedAt: 10,
         items: [
           {
@@ -49,7 +52,47 @@ describe("Codex protocol normalization", () => {
       },
     ]);
     expect(items.map((item) => item.id)).toEqual(["u", "a"]);
-    expect(items[0]).toMatchObject({ kind: "user", text: "Please fix it" });
+    expect(items[0]).toMatchObject({
+      kind: "user",
+      text: "Please fix it",
+      turnId: "turn-1",
+    });
+  });
+
+  it("maps goals, queues, and compaction notifications", () => {
+    expect(
+      normalizeNotification("thread/queue/changed", {
+        threadId: "thread-1",
+      }),
+    ).toEqual({ type: "queue-changed", threadId: "thread-1" });
+    expect(
+      normalizeNotification("thread/goal/updated", {
+        threadId: "thread-1",
+        goal: {
+          threadId: "thread-1",
+          objective: "Ship it",
+          status: "active",
+          tokenBudget: 1_000,
+          tokensUsed: 50,
+          timeUsedSeconds: 4,
+          createdAt: 1,
+          updatedAt: 2,
+        },
+      }),
+    ).toMatchObject({
+      type: "goal",
+      goal: { objective: "Ship it", tokenBudget: 1_000 },
+    });
+    expect(
+      normalizeNotification("thread/compacted", {
+        threadId: "thread-1",
+        turnId: "turn-1",
+      }),
+    ).toEqual({
+      type: "compacted",
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
   });
 
   it("maps streamed assistant deltas", () => {

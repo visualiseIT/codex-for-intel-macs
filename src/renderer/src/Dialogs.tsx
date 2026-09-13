@@ -1,8 +1,12 @@
 import { useState } from "react";
 import type {
   CodexDiagnostics,
+  NotificationPreferences,
   PendingInteraction,
+  ThreadGoal,
+  ThreadGoalStatus,
   ThreadSummary,
+  TranscriptionStatus,
 } from "../../shared/types";
 
 export function InteractionDialog({
@@ -171,6 +175,10 @@ export function ThreadActionsDialog({
   onArchive,
   onRestore,
   onDelete,
+  onFork,
+  onCompact,
+  onGoal,
+  busy,
 }: {
   thread: ThreadSummary;
   archived: boolean;
@@ -181,6 +189,10 @@ export function ThreadActionsDialog({
   onArchive: () => void;
   onRestore: () => void;
   onDelete: () => void;
+  onFork: () => void;
+  onCompact: () => void;
+  onGoal: () => void;
+  busy: boolean;
 }): React.JSX.Element {
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
@@ -203,9 +215,274 @@ export function ThreadActionsDialog({
           ) : (
             <button onClick={onArchive}>Archive conversation</button>
           )}
+          {!archived ? (
+            <button onClick={onFork} disabled={busy}>
+              Fork conversation
+            </button>
+          ) : null}
+          {!archived ? (
+            <button onClick={onCompact} disabled={busy}>
+              Compact context…
+            </button>
+          ) : null}
+          {!archived ? <button onClick={onGoal}>Manage goal…</button> : null}
           <button className="danger" onClick={onDelete}>
             Delete permanently…
           </button>
+        </div>
+        <div className="modal-actions">
+          <button className="ghost-button" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+export function GoalDialog({
+  goal,
+  onClose,
+  onSave,
+  onClear,
+}: {
+  goal: ThreadGoal | null;
+  onClose: () => void;
+  onSave: (
+    objective: string,
+    status: ThreadGoalStatus,
+    tokenBudget: number | null,
+  ) => Promise<void>;
+  onClear: () => Promise<void>;
+}): React.JSX.Element {
+  const [objective, setObjective] = useState(goal?.objective ?? "");
+  const [status, setStatus] = useState<ThreadGoalStatus>(
+    goal?.status ?? "active",
+  );
+  const [tokenBudget, setTokenBudget] = useState(
+    goal?.tokenBudget?.toString() ?? "",
+  );
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const run = async (action: () => Promise<void>): Promise<void> => {
+    setBusy(true);
+    setError("");
+    try {
+      await action();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" onMouseDown={onClose}>
+      <section
+        className="modal settings-modal"
+        role="dialog"
+        aria-modal="true"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <span className="eyebrow">Conversation goal</span>
+        <h2>{goal ? "Manage goal" : "Set a goal"}</h2>
+        <label className="settings-field">
+          <span>Objective</span>
+          <textarea
+            value={objective}
+            onChange={(event) => setObjective(event.target.value)}
+            rows={4}
+            autoFocus
+          />
+        </label>
+        <div className="settings-grid">
+          <label className="settings-field">
+            <span>Status</span>
+            <select
+              value={status}
+              onChange={(event) =>
+                setStatus(event.target.value as ThreadGoalStatus)
+              }
+            >
+              <option value="active">Active</option>
+              <option value="paused">Paused</option>
+              <option value="blocked">Blocked</option>
+              <option value="usageLimited">Usage limited</option>
+              <option value="budgetLimited">Budget limited</option>
+              <option value="complete">Complete</option>
+            </select>
+          </label>
+          <label className="settings-field">
+            <span>Token budget (optional)</span>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={tokenBudget}
+              onChange={(event) => setTokenBudget(event.target.value)}
+            />
+          </label>
+        </div>
+        {goal ? (
+          <p className="modal-detail">
+            {goal.tokensUsed.toLocaleString()} tokens · {goal.timeUsedSeconds}s
+            elapsed
+          </p>
+        ) : null}
+        {error ? <p className="settings-error">{error}</p> : null}
+        <div className="modal-actions split-actions">
+          <button className="ghost-button" onClick={onClose} disabled={busy}>
+            Close
+          </button>
+          <div>
+            {goal ? (
+              <button
+                className="ghost-button danger"
+                disabled={busy}
+                onClick={() => void run(onClear)}
+              >
+                Clear goal
+              </button>
+            ) : null}
+            <button
+              className="primary-button"
+              disabled={busy || !objective.trim()}
+              onClick={() =>
+                void run(() =>
+                  onSave(
+                    objective.trim(),
+                    status,
+                    tokenBudget ? Number(tokenBudget) : null,
+                  ),
+                )
+              }
+            >
+              Save goal
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+export function SettingsDialog({
+  notifications,
+  transcription,
+  onClose,
+  onNotificationsChange,
+  onApiKeyChange,
+}: {
+  notifications: NotificationPreferences;
+  transcription: TranscriptionStatus;
+  onClose: () => void;
+  onNotificationsChange: (
+    preferences: NotificationPreferences,
+  ) => Promise<void>;
+  onApiKeyChange: (apiKey: string) => Promise<TranscriptionStatus>;
+}): React.JSX.Element {
+  const [preferences, setPreferences] = useState(notifications);
+  const [status, setStatus] = useState(transcription);
+  const [apiKey, setApiKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+
+  const savePreferences = async (
+    next: NotificationPreferences,
+  ): Promise<void> => {
+    setPreferences(next);
+    await onNotificationsChange(next);
+  };
+
+  const saveKey = async (): Promise<void> => {
+    setBusy(true);
+    setMessage("");
+    try {
+      setStatus(await onApiKeyChange(apiKey));
+      setApiKey("");
+      setMessage(
+        apiKey.trim() ? "API key saved securely." : "Saved key removed.",
+      );
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" onMouseDown={onClose}>
+      <section
+        className="modal settings-modal"
+        role="dialog"
+        aria-modal="true"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <span className="eyebrow">Desktop settings</span>
+        <h2>Notifications & dictation</h2>
+        <div className="settings-section">
+          <strong>Notifications</strong>
+          <label className="settings-check">
+            <input
+              type="checkbox"
+              checked={preferences.turnCompleted}
+              onChange={(event) =>
+                void savePreferences({
+                  ...preferences,
+                  turnCompleted: event.target.checked,
+                })
+              }
+            />
+            Notify when a background turn finishes
+          </label>
+          <label className="settings-check">
+            <input
+              type="checkbox"
+              checked={preferences.attentionRequired}
+              onChange={(event) =>
+                void savePreferences({
+                  ...preferences,
+                  attentionRequired: event.target.checked,
+                })
+              }
+            />
+            Notify when Codex needs approval or input
+          </label>
+        </div>
+        <div className="settings-section">
+          <strong>Microphone dictation</strong>
+          <p className="modal-detail">
+            Recordings are sent to the OpenAI Audio API using {status.model}.
+            API usage is billed separately from your Codex subscription.
+          </p>
+          <p className="settings-status">
+            {status.configured
+              ? `Configured via ${status.source === "environment" ? "OPENAI_API_KEY" : "macOS Keychain"}.`
+              : "No transcription API key configured."}
+          </p>
+          {status.source !== "environment" ? (
+            <div className="settings-key-row">
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(event) => setApiKey(event.target.value)}
+                placeholder={
+                  status.configured
+                    ? "Enter a replacement key"
+                    : "OpenAI API key"
+                }
+              />
+              <button
+                className="primary-button"
+                disabled={busy || (!apiKey.trim() && !status.configured)}
+                onClick={() => void saveKey()}
+              >
+                {apiKey.trim() ? "Save key" : "Remove key"}
+              </button>
+            </div>
+          ) : null}
+          {message ? <p className="settings-status">{message}</p> : null}
         </div>
         <div className="modal-actions">
           <button className="ghost-button" onClick={onClose}>

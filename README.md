@@ -20,8 +20,13 @@ A small local macOS desktop client for the Codex CLI, designed to be packaged fo
 - A composer that grows naturally for multiline prompts before it begins scrolling.
 - Drafting the next prompt while a turn is still running.
 - User-controlled conversation scrolling with a **Jump to latest** shortcut.
+- A **Previous prompt** shortcut while browsing earlier output.
+- Active-turn steering plus a persistent **Queue next** action for follow-up prompts.
 - File-change details collapsed by default to keep long conversations navigable.
 - A distinctive custom Dock and application icon.
+- Whole-thread and per-prompt forks, manual context compaction, and conversation goals.
+- Configurable background completion and attention notifications.
+- Push-to-record microphone dictation using OpenAI's `gpt-transcribe` service.
 - Conservative defaults: workspace-write access, no sandbox network access, and on-request approvals.
 
 Codex remains the source of truth for thread history and authentication. The app only remembers UI preferences such as the selected workspace, theme, and locally pinned thread IDs. Pinning is local in this release because the installed Codex CLI schema does not yet expose server-side pin metadata.
@@ -35,7 +40,7 @@ Codex remains the source of truth for thread history and authentication. The app
 
 The application looks for `codex` in `PATH`, common Homebrew/npm locations, and installed NVM Node versions. It also preserves the discovered NVM binary directory when launching Codex, because macOS GUI applications do not inherit the Terminal's full `PATH`. If it cannot locate the CLI, set `CODEX_BINARY` to its absolute path before launching.
 
-The microphone/dictation control remains deferred: a dependable implementation needs explicit microphone permissions and a supported transcription service or native speech integration.
+Microphone dictation records a bounded WebM clip and sends it to the OpenAI Audio transcription API. Open **Desktop settings** to add an OpenAI API key; it is encrypted through macOS Keychain-backed storage and is never returned to the renderer. `OPENAI_API_KEY` is also supported and takes precedence. Audio API usage is billed separately from a Codex subscription.
 
 ## Run locally
 
@@ -80,7 +85,7 @@ Every distributable rebuild must use a new version number so artifacts and insta
 - Turn history is limited to the newest 100 entries; older-turn pagination remains deferred.
 - Thread pins are a local UI preference until the installed Codex CLI exposes persisted pin metadata.
 - App-server supports native text and image inputs. Other dropped files are inserted as safe workspace-relative prompt references.
-- Active-turn steering, dedicated review mode, thread forks, and compaction remain planned work.
+- Dedicated review mode remains deferred by request.
 - Remote app-server connections remain deferred while WebSocket transport is experimental.
 - The App Server surface is still evolving. The protocol adapter is intentionally isolated in `src/main/` so it can be updated without rewriting the UI.
 - Distribution signing and the minimum macOS version ultimately depend on the selected Electron release and your signing setup.

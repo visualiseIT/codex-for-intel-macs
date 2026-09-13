@@ -67,26 +67,40 @@ export function normalizeThread(value: unknown): ThreadSummary {
     createdAt: typeof thread.createdAt === "number" ? thread.createdAt : 0,
     updatedAt: typeof thread.updatedAt === "number" ? thread.updatedAt : 0,
     status: statusText(thread.status),
+    forkedFromId:
+      typeof thread.forkedFromId === "string" ? thread.forkedFromId : null,
   };
 }
 
-export function normalizeItem(value: unknown): ChatItem {
+export function normalizeItem(value: unknown, turnId?: string): ChatItem {
   const item = record(value);
   const id = string(item.id, `unknown-${Date.now()}`);
   const type = string(item.type, "status");
 
   switch (type) {
     case "userMessage":
-      return { id, kind: "user", text: userText(item.content) };
+      return { id, kind: "user", text: userText(item.content), turnId };
     case "agentMessage":
-      return { id, kind: "assistant", text: string(item.text) };
+      return { id, kind: "assistant", text: string(item.text), turnId };
     case "plan":
-      return { id, kind: "plan", title: "Plan", text: string(item.text) };
+      return {
+        id,
+        kind: "plan",
+        title: "Plan",
+        text: string(item.text),
+        turnId,
+      };
     case "reasoning": {
       const summary = Array.isArray(item.summary)
         ? item.summary.map(String).join("\n")
         : "";
-      return { id, kind: "reasoning", title: "Reasoning", text: summary };
+      return {
+        id,
+        kind: "reasoning",
+        title: "Reasoning",
+        text: summary,
+        turnId,
+      };
     }
     case "commandExecution":
       return {
@@ -95,6 +109,7 @@ export function normalizeItem(value: unknown): ChatItem {
         title: `$ ${string(item.command, "Command")}`,
         text: string(item.aggregatedOutput),
         status: statusText(item.status),
+        turnId,
       };
     case "fileChange": {
       const changes = normalizeChanges(item.changes);
@@ -108,6 +123,7 @@ export function normalizeItem(value: unknown): ChatItem {
           .join("\n"),
         status: statusText(item.status),
         changes,
+        turnId,
       };
     }
     case "mcpToolCall":
@@ -117,6 +133,7 @@ export function normalizeItem(value: unknown): ChatItem {
         title: `${string(item.server, "MCP")} · ${string(item.tool, "tool")}`,
         text: item.error ? JSON.stringify(item.error, null, 2) : "",
         status: statusText(item.status),
+        turnId,
       };
     case "dynamicToolCall":
       return {
@@ -125,6 +142,16 @@ export function normalizeItem(value: unknown): ChatItem {
         title: `${string(item.namespace)}${item.namespace ? " · " : ""}${string(item.tool, "Tool")}`,
         text: "",
         status: statusText(item.status),
+        turnId,
+      };
+    case "contextCompaction":
+      return {
+        id,
+        kind: "status",
+        title: "Context compacted",
+        text: "Earlier conversation context was summarized to make room for continued work.",
+        status: "completed",
+        turnId,
       };
     default:
       return {
@@ -133,6 +160,7 @@ export function normalizeItem(value: unknown): ChatItem {
         title: type,
         text: "",
         status: statusText(item.status),
+        turnId,
       };
   }
 }
@@ -149,8 +177,12 @@ export function normalizeTurns(value: unknown): ChatItem[] {
   });
 
   return turns.flatMap((turn) => {
-    const items = record(turn).items;
-    return Array.isArray(items) ? items.map(normalizeItem) : [];
+    const turnRecord = record(turn);
+    const items = turnRecord.items;
+    const turnId = string(turnRecord.id) || undefined;
+    return Array.isArray(items)
+      ? items.map((item) => normalizeItem(item, turnId))
+      : [];
   });
 }
 
@@ -169,7 +201,7 @@ export function normalizeNotification(
       phase: method === "item/started" ? "started" : "completed",
       threadId,
       turnId,
-      item: normalizeItem(params.item),
+      item: normalizeItem(params.item, turnId),
     };
   }
 
@@ -189,12 +221,15 @@ export function normalizeNotification(
   }
 
   if (method === "item/fileChange/patchUpdated") {
-    const item = normalizeItem({
-      id: string(params.itemId),
-      type: "fileChange",
-      changes: params.changes,
-      status: "inProgress",
-    });
+    const item = normalizeItem(
+      {
+        id: string(params.itemId),
+        type: "fileChange",
+        changes: params.changes,
+        status: "inProgress",
+      },
+      turnId,
+    );
     return {
       type: "item",
       phase: "started",
@@ -214,6 +249,41 @@ export function normalizeNotification(
       status: statusText(turn.status),
       error: string(error.message) || undefined,
     };
+  }
+
+  if (method === "thread/queue/changed") {
+    return { type: "queue-changed", threadId };
+  }
+
+  if (method === "thread/goal/updated") {
+    const goal = record(params.goal);
+    return {
+      type: "goal",
+      threadId,
+      goal: {
+        threadId,
+        objective: string(goal.objective),
+        status: string(
+          goal.status,
+          "active",
+        ) as import("../shared/types").ThreadGoalStatus,
+        tokenBudget:
+          typeof goal.tokenBudget === "number" ? goal.tokenBudget : null,
+        tokensUsed: typeof goal.tokensUsed === "number" ? goal.tokensUsed : 0,
+        timeUsedSeconds:
+          typeof goal.timeUsedSeconds === "number" ? goal.timeUsedSeconds : 0,
+        createdAt: typeof goal.createdAt === "number" ? goal.createdAt : 0,
+        updatedAt: typeof goal.updatedAt === "number" ? goal.updatedAt : 0,
+      },
+    };
+  }
+
+  if (method === "thread/goal/cleared") {
+    return { type: "goal", threadId, goal: null };
+  }
+
+  if (method === "thread/compacted") {
+    return { type: "compacted", threadId, turnId };
   }
 
   if (

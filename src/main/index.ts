@@ -4,13 +4,19 @@ import {
   dialog,
   ipcMain,
   nativeTheme,
+  Notification,
   shell,
 } from "electron";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type {
   CodexSettings,
+  DictationAudio,
+  NotificationPreferences,
   StartTurnInput,
+  SteerTurnInput,
   ThreadListInput,
+  ThreadGoalStatus,
   ThemeMode,
   UiEvent,
 } from "../shared/types";
@@ -19,13 +25,70 @@ import {
   prepareFileReferences,
   prepareImageAttachments,
 } from "./image-attachments";
+import {
+  DEFAULT_NOTIFICATION_PREFERENCES,
+  notificationForEvent,
+} from "./notifications";
+import { TranscriptionService } from "./transcription";
 
 const service = new CodexService();
 let mainWindow: BrowserWindow | null = null;
+let notificationPreferences = DEFAULT_NOTIFICATION_PREFERENCES;
+let preferencesPath = "";
+let transcriptionService: TranscriptionService | null = null;
+const shownNotifications = new Set<string>();
+
+function readNotificationPreferences(): NotificationPreferences {
+  if (!preferencesPath || !existsSync(preferencesPath))
+    return DEFAULT_NOTIFICATION_PREFERENCES;
+  try {
+    const value: unknown = JSON.parse(readFileSync(preferencesPath, "utf8"));
+    if (typeof value !== "object" || value === null)
+      return DEFAULT_NOTIFICATION_PREFERENCES;
+    const candidate = value as Partial<NotificationPreferences>;
+    return {
+      turnCompleted: candidate.turnCompleted !== false,
+      attentionRequired: candidate.attentionRequired !== false,
+    };
+  } catch {
+    return DEFAULT_NOTIFICATION_PREFERENCES;
+  }
+}
+
+function saveNotificationPreferences(value: NotificationPreferences): void {
+  notificationPreferences = {
+    turnCompleted: value.turnCompleted === true,
+    attentionRequired: value.attentionRequired === true,
+  };
+  writeFileSync(preferencesPath, JSON.stringify(notificationPreferences), {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+}
 
 function sendEvent(event: UiEvent): void {
   if (mainWindow && !mainWindow.isDestroyed())
     mainWindow.webContents.send("codex:event", event);
+  const spec = notificationForEvent(
+    event,
+    notificationPreferences,
+    mainWindow?.isFocused() === true,
+  );
+  if (!spec || shownNotifications.has(spec.key) || !Notification.isSupported())
+    return;
+  shownNotifications.add(spec.key);
+  if (shownNotifications.size > 500) shownNotifications.clear();
+  const notification = new Notification({ title: spec.title, body: spec.body });
+  notification.on("click", () => {
+    mainWindow?.show();
+    mainWindow?.focus();
+    if (mainWindow && !mainWindow.isDestroyed())
+      mainWindow.webContents.send("codex:event", {
+        type: "focus-thread",
+        threadId: spec.threadId,
+      } satisfies UiEvent);
+  });
+  notification.show();
 }
 
 function registerIpc(): void {
@@ -90,8 +153,49 @@ function registerIpc(): void {
   ipcMain.handle("codex:delete-thread", (_event, threadId: string) =>
     service.deleteThread(threadId),
   );
+  ipcMain.handle(
+    "codex:fork-thread",
+    (_event, threadId: string, lastTurnId?: string) =>
+      service.forkThread(threadId, lastTurnId),
+  );
+  ipcMain.handle("codex:compact-thread", (_event, threadId: string) =>
+    service.compactThread(threadId),
+  );
+  ipcMain.handle("codex:get-thread-goal", (_event, threadId: string) =>
+    service.getThreadGoal(threadId),
+  );
+  ipcMain.handle(
+    "codex:set-thread-goal",
+    (
+      _event,
+      threadId: string,
+      objective: string,
+      status: ThreadGoalStatus,
+      tokenBudget: number | null,
+    ) => service.setThreadGoal(threadId, objective, status, tokenBudget),
+  );
+  ipcMain.handle("codex:clear-thread-goal", (_event, threadId: string) =>
+    service.clearThreadGoal(threadId),
+  );
   ipcMain.handle("codex:start-turn", (_event, input: StartTurnInput) =>
     service.startTurn(input),
+  );
+  ipcMain.handle("codex:steer-turn", (_event, input: SteerTurnInput) =>
+    service.steerTurn(input),
+  );
+  ipcMain.handle("codex:queue-prompt", (_event, input: StartTurnInput) =>
+    service.queuePrompt(input),
+  );
+  ipcMain.handle("codex:list-queued-prompts", (_event, threadId: string) =>
+    service.listQueuedPrompts(threadId),
+  );
+  ipcMain.handle(
+    "codex:delete-queued-prompt",
+    (_event, threadId: string, queuedPromptId: string) =>
+      service.deleteQueuedPrompt(threadId, queuedPromptId),
+  );
+  ipcMain.handle("codex:start-next-queued-prompt", (_event, threadId: string) =>
+    service.startNextQueuedPrompt(threadId),
   );
   ipcMain.handle(
     "codex:interrupt-turn",
@@ -107,6 +211,26 @@ function registerIpc(): void {
   ipcMain.handle("codex:usage", () => service.getUsage());
   ipcMain.handle("codex:diagnostics", () => service.getDiagnostics());
   ipcMain.handle("codex:reconnect", () => service.reconnect());
+  ipcMain.handle(
+    "app:get-notification-preferences",
+    () => notificationPreferences,
+  );
+  ipcMain.handle(
+    "app:set-notification-preferences",
+    (_event, value: NotificationPreferences) =>
+      saveNotificationPreferences(value),
+  );
+  ipcMain.handle("app:get-transcription-status", () =>
+    transcriptionService?.status(),
+  );
+  ipcMain.handle("app:set-transcription-api-key", (_event, apiKey: string) => {
+    if (!transcriptionService) throw new Error("Dictation is not ready.");
+    return transcriptionService.setApiKey(apiKey);
+  });
+  ipcMain.handle("app:transcribe-audio", (_event, audio: DictationAudio) => {
+    if (!transcriptionService) throw new Error("Dictation is not ready.");
+    return transcriptionService.transcribe(audio);
+  });
 }
 
 function createWindow(): void {
@@ -136,6 +260,17 @@ function createWindow(): void {
     return { action: "deny" };
   });
 
+  mainWindow.webContents.session.setPermissionRequestHandler(
+    (webContents, permission, callback, details) => {
+      const allowMicrophone =
+        webContents === mainWindow?.webContents &&
+        permission === "media" &&
+        "mediaTypes" in details &&
+        details.mediaTypes?.includes("audio");
+      callback(allowMicrophone === true);
+    },
+  );
+
   if (process.env.ELECTRON_RENDERER_URL) {
     void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
   } else {
@@ -144,6 +279,12 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  const userData = app.getPath("userData");
+  preferencesPath = join(userData, "desktop-preferences.json");
+  notificationPreferences = readNotificationPreferences();
+  transcriptionService = new TranscriptionService(
+    join(userData, "transcription-api-key.enc"),
+  );
   registerIpc();
   service.on("event", sendEvent);
   createWindow();

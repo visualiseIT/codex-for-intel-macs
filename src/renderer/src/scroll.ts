@@ -6,3 +6,14 @@ export function isNearBottom(
 ): boolean {
   return scrollHeight - scrollTop - clientHeight < threshold;
 }
+
+export function previousPromptOffset(
+  promptOffsets: number[],
+  scrollTop: number,
+  threshold = 20,
+): number | null {
+  const previous = promptOffsets.filter(
+    (offset) => offset < scrollTop - threshold,
+  );
+  return previous.at(-1) ?? null;
+}

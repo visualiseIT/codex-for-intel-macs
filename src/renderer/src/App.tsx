@@ -13,22 +13,29 @@ import type {
   ConnectionState,
   ImageAttachment,
   ModelOption,
+  NotificationPreferences,
   PendingInteraction,
+  QueuedPrompt,
   SandboxMode,
   ThemeMode,
+  ThreadGoal,
+  ThreadGoalStatus,
   ThreadSummary,
+  TranscriptionStatus,
   UiEvent,
   UsageInfo,
 } from "../../shared/types";
 import { ActivityOutput } from "./ActivityOutput";
 import {
   DiagnosticsDialog,
+  GoalDialog,
   InteractionDialog,
+  SettingsDialog,
   ThreadActionsDialog,
 } from "./Dialogs";
 import { DiffView } from "./DiffView";
 import { RichText } from "./RichText";
-import { isNearBottom } from "./scroll";
+import { isNearBottom, previousPromptOffset } from "./scroll";
 
 const LAST_WORKSPACE_KEY = "codex-desktop:last-workspace";
 const THEME_KEY = "codex-desktop:theme";
@@ -167,10 +174,35 @@ export function App(): React.JSX.Element {
   const [interactions, setInteractions] = useState<PendingInteraction[]>([]);
   const [usage, setUsage] = useState<UsageInfo | null>(null);
   const [diagnostics, setDiagnostics] = useState<CodexDiagnostics | null>(null);
+  const [queuedPrompts, setQueuedPrompts] = useState<QueuedPrompt[]>([]);
+  const [goal, setGoal] = useState<ThreadGoal | null>(null);
+  const [goalOpen, setGoalOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [notificationPreferences, setNotificationPreferences] =
+    useState<NotificationPreferences>({
+      turnCompleted: true,
+      attentionRequired: true,
+    });
+  const [transcriptionStatus, setTranscriptionStatus] =
+    useState<TranscriptionStatus>({
+      configured: false,
+      source: "none",
+      model: "gpt-transcribe",
+    });
+  const [dictationState, setDictationState] = useState<
+    "idle" | "recording" | "transcribing"
+  >("idle");
+  const [pendingThreadFocus, setPendingThreadFocus] = useState<string | null>(
+    null,
+  );
   const [error, setError] = useState("");
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const activeThreadRef = useRef<string | null>(null);
   const promptRef = useRef<HTMLTextAreaElement | null>(null);
+  const conversationRef = useRef<HTMLElement | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recordingStreamRef = useRef<MediaStream | null>(null);
+  const recordingChunksRef = useRef<Blob[]>([]);
   const stickToBottomRef = useRef(true);
   const endRef = useRef<HTMLDivElement | null>(null);
 
@@ -251,12 +283,22 @@ export function App(): React.JSX.Element {
     setUsage(await window.codex.getUsage());
   }, []);
 
+  const loadQueuedPrompts = useCallback(async (threadId: string) => {
+    setQueuedPrompts(await window.codex.listQueuedPrompts(threadId));
+  }, []);
+
+  const loadGoal = useCallback(async (threadId: string) => {
+    setGoal(await window.codex.getThreadGoal(threadId));
+  }, []);
+
   const clearConversation = useCallback(() => {
     activeThreadRef.current = null;
     setSelectedThread(null);
     setItems([]);
     setActiveTurnId(null);
     setRunning(false);
+    setQueuedPrompts([]);
+    setGoal(null);
   }, []);
 
   const handleUiEvent = useCallback(
@@ -275,6 +317,33 @@ export function App(): React.JSX.Element {
         setUsage(event.usage);
         return;
       }
+      if (event.type === "focus-thread") {
+        setPendingThreadFocus(event.threadId);
+        return;
+      }
+      if (event.type === "queue-changed") {
+        if (event.threadId === activeThreadRef.current)
+          void loadQueuedPrompts(event.threadId);
+        return;
+      }
+      if (event.type === "goal") {
+        if (event.threadId === activeThreadRef.current) setGoal(event.goal);
+        return;
+      }
+      if (event.type === "compacted") {
+        if (event.threadId === activeThreadRef.current)
+          setItems((current) =>
+            upsertItem(current, {
+              id: `compacted-${event.turnId}`,
+              kind: "status",
+              title: "Context compacted",
+              text: "Earlier conversation context was summarized to make room for continued work.",
+              status: "completed",
+              turnId: event.turnId,
+            }),
+          );
+        return;
+      }
       if (event.type === "interaction") {
         setInteractions((current) => [...current, event.interaction]);
         return;
@@ -291,6 +360,16 @@ export function App(): React.JSX.Element {
       }
       if (event.type === "error") {
         setError(event.message);
+        return;
+      }
+      if (
+        event.type === "turn" &&
+        event.phase === "completed" &&
+        event.threadId !== activeThreadRef.current
+      ) {
+        void window.codex.startNextQueuedPrompt(event.threadId).catch(() => {
+          // The queued prompt remains persisted and can be retried when reopened.
+        });
         return;
       }
       if (event.threadId !== activeThreadRef.current) return;
@@ -314,6 +393,17 @@ export function App(): React.JSX.Element {
           if (event.error) setError(event.error);
           void refreshThreads(search, archived);
           void loadUsage();
+          void window.codex
+            .startNextQueuedPrompt(event.threadId)
+            .then((next) => {
+              if (!next || event.threadId !== activeThreadRef.current) return;
+              setActiveTurnId(next.turnId);
+              setRunning(true);
+              void loadQueuedPrompts(event.threadId);
+            })
+            .catch((cause: unknown) =>
+              setError(cause instanceof Error ? cause.message : String(cause)),
+            );
         }
       }
     },
@@ -321,6 +411,7 @@ export function App(): React.JSX.Element {
       archived,
       clearConversation,
       loadModels,
+      loadQueuedPrompts,
       loadUsage,
       refreshThreads,
       search,
@@ -365,6 +456,17 @@ export function App(): React.JSX.Element {
     return () => window.clearTimeout(timer);
   }, [archived, connection, refreshThreads, search]);
 
+  useEffect(() => {
+    void window.codex
+      .getNotificationPreferences()
+      .then(setNotificationPreferences);
+    void window.codex.getTranscriptionStatus().then(setTranscriptionStatus);
+    return () => {
+      recorderRef.current?.stop();
+      recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+    };
+  }, []);
+
   useLayoutEffect(() => {
     const textarea = promptRef.current;
     if (!textarea) return;
@@ -393,6 +495,8 @@ export function App(): React.JSX.Element {
       activeThreadRef.current = result.thread.id;
       setSelectedThread(result.thread);
       setItems(result.items);
+      void loadQueuedPrompts(result.thread.id);
+      void loadGoal(result.thread.id);
       setSettings((current) => ({
         ...current,
         cwd: result.thread.cwd || current.cwd,
@@ -406,6 +510,29 @@ export function App(): React.JSX.Element {
       setLoadingThread(false);
     }
   };
+
+  useEffect(() => {
+    if (!pendingThreadFocus) return;
+    void window.codex
+      .openThread(pendingThreadFocus)
+      .then((result) => {
+        activeThreadRef.current = result.thread.id;
+        setSelectedThread(result.thread);
+        setItems(result.items);
+        setThreadView("active");
+        setSettings((current) => ({
+          ...current,
+          cwd: result.thread.cwd || current.cwd,
+          model: result.thread.model || current.model,
+        }));
+        void loadQueuedPrompts(result.thread.id);
+        void loadGoal(result.thread.id);
+      })
+      .catch((cause: unknown) =>
+        setError(cause instanceof Error ? cause.message : String(cause)),
+      )
+      .finally(() => setPendingThreadFocus(null));
+  }, [loadGoal, loadQueuedPrompts, pendingThreadFocus]);
 
   const newChat = (): void => {
     clearConversation();
@@ -528,6 +655,211 @@ export function App(): React.JSX.Element {
       setError(cause instanceof Error ? cause.message : String(cause));
       setPrompt(text);
       setAttachments(pendingAttachments);
+    }
+  };
+
+  const steerPrompt = async (): Promise<void> => {
+    const text = prompt.trim();
+    if (
+      (!text && !attachments.length) ||
+      !running ||
+      !selectedThread ||
+      !activeTurnId
+    )
+      return;
+    const pendingAttachments = attachments;
+    setPrompt("");
+    setAttachments([]);
+    setError("");
+    try {
+      await window.codex.steerTurn({
+        ...settings,
+        threadId: selectedThread.id,
+        expectedTurnId: activeTurnId,
+        prompt: text,
+        imagePaths: pendingAttachments.map((attachment) => attachment.path),
+      });
+    } catch (cause) {
+      setPrompt(text);
+      setAttachments(pendingAttachments);
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  };
+
+  const queuePrompt = async (): Promise<void> => {
+    const text = prompt.trim();
+    if ((!text && !attachments.length) || !selectedThread) return;
+    const pendingAttachments = attachments;
+    setPrompt("");
+    setAttachments([]);
+    setError("");
+    try {
+      const queued = await window.codex.queuePrompt({
+        ...settings,
+        threadId: selectedThread.id,
+        prompt: text,
+        imagePaths: pendingAttachments.map((attachment) => attachment.path),
+      });
+      setQueuedPrompts((current) =>
+        current.some((item) => item.id === queued.id)
+          ? current
+          : [...current, queued],
+      );
+    } catch (cause) {
+      setPrompt(text);
+      setAttachments(pendingAttachments);
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  };
+
+  const deleteQueuedPrompt = async (queuedPromptId: string): Promise<void> => {
+    if (!selectedThread) return;
+    try {
+      await window.codex.deleteQueuedPrompt(selectedThread.id, queuedPromptId);
+      setQueuedPrompts((current) =>
+        current.filter((queued) => queued.id !== queuedPromptId),
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  };
+
+  const forkConversation = async (
+    thread: ThreadSummary,
+    lastTurnId?: string,
+  ): Promise<void> => {
+    setLoadingThread(true);
+    setThreadMenu(null);
+    setError("");
+    try {
+      const forked = await window.codex.forkThread(thread.id, lastTurnId);
+      await refreshThreads(search, false);
+      setThreadView("active");
+      await openThread(forked);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setLoadingThread(false);
+    }
+  };
+
+  const compactConversation = async (thread: ThreadSummary): Promise<void> => {
+    if (
+      !window.confirm(
+        "Compact this conversation? Codex will summarize older context before continuing.",
+      )
+    )
+      return;
+    setThreadMenu(null);
+    setError("");
+    try {
+      await window.codex.compactThread(thread.id);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  };
+
+  const openGoal = async (threadId: string): Promise<void> => {
+    try {
+      await loadGoal(threadId);
+      setThreadMenu(null);
+      setGoalOpen(true);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  };
+
+  const saveGoal = async (
+    objective: string,
+    status: ThreadGoalStatus,
+    tokenBudget: number | null,
+  ): Promise<void> => {
+    if (!selectedThread) return;
+    if (
+      tokenBudget !== null &&
+      (!Number.isInteger(tokenBudget) || tokenBudget < 1)
+    )
+      throw new Error("Token budget must be a positive whole number.");
+    setGoal(
+      await window.codex.setThreadGoal(
+        selectedThread.id,
+        objective,
+        status,
+        tokenBudget,
+      ),
+    );
+    setGoalOpen(false);
+  };
+
+  const clearGoal = async (): Promise<void> => {
+    if (!selectedThread) return;
+    await window.codex.clearThreadGoal(selectedThread.id);
+    setGoal(null);
+    setGoalOpen(false);
+  };
+
+  const startDictation = async (): Promise<void> => {
+    if (dictationState === "recording") {
+      recorderRef.current?.stop();
+      return;
+    }
+    if (!transcriptionStatus.configured) {
+      setSettingsOpen(true);
+      setError("Add an OpenAI API key in Settings before dictating.");
+      return;
+    }
+    try {
+      setError("");
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const preferred = ["audio/webm;codecs=opus", "audio/webm"].find((type) =>
+        MediaRecorder.isTypeSupported(type),
+      );
+      const recorder = preferred
+        ? new MediaRecorder(stream, { mimeType: preferred })
+        : new MediaRecorder(stream);
+      recordingStreamRef.current = stream;
+      recorderRef.current = recorder;
+      recordingChunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size) recordingChunksRef.current.push(event.data);
+      };
+      recorder.onerror = () => {
+        setError("The microphone recording failed.");
+        setDictationState("idle");
+        stream.getTracks().forEach((track) => track.stop());
+      };
+      recorder.onstop = () => {
+        const mimeType = recorder.mimeType || preferred || "audio/webm";
+        const blob = new Blob(recordingChunksRef.current, { type: mimeType });
+        stream.getTracks().forEach((track) => track.stop());
+        recorderRef.current = null;
+        recordingStreamRef.current = null;
+        setDictationState("transcribing");
+        void blob
+          .arrayBuffer()
+          .then((buffer) =>
+            window.codex.transcribeAudio({
+              bytes: new Uint8Array(buffer),
+              mimeType,
+            }),
+          )
+          .then((text) => {
+            setPrompt(
+              (current) =>
+                `${current}${current && !current.endsWith(" ") ? " " : ""}${text}`,
+            );
+            promptRef.current?.focus();
+          })
+          .catch((cause: unknown) =>
+            setError(cause instanceof Error ? cause.message : String(cause)),
+          )
+          .finally(() => setDictationState("idle"));
+      };
+      recorder.start();
+      setDictationState("recording");
+    } catch (cause) {
+      setDictationState("idle");
+      setError(cause instanceof Error ? cause.message : String(cause));
     }
   };
 
@@ -740,14 +1072,30 @@ export function App(): React.JSX.Element {
 
       <main className="main-panel">
         <header className="toolbar">
-          <button
-            className="workspace-button"
-            onClick={() => void chooseWorkspace()}
-            title={settings.cwd}
-          >
-            <span className="folder-icon">▱</span>
-            <span>{shortPath(settings.cwd)}</span>
-          </button>
+          <div className="toolbar-context">
+            <button
+              className="workspace-button"
+              onClick={() => void chooseWorkspace()}
+              title={settings.cwd}
+            >
+              <span className="folder-icon">▱</span>
+              <span>{shortPath(settings.cwd)}</span>
+            </button>
+            {selectedThread?.forkedFromId ? (
+              <span className="fork-badge" title={selectedThread.forkedFromId}>
+                Fork of {selectedThread.forkedFromId.slice(0, 8)}…
+              </span>
+            ) : null}
+            {selectedThread ? (
+              <button
+                className={`goal-button ${goal ? "active" : ""}`}
+                onClick={() => void openGoal(selectedThread.id)}
+                title={goal?.objective ?? "Set a conversation goal"}
+              >
+                ◎ {goal ? goal.status : "Goal"}
+              </button>
+            ) : null}
+          </div>
           <div className="toolbar-controls">
             {usage?.primary ? (
               <button
@@ -819,10 +1167,19 @@ export function App(): React.JSX.Element {
               <option value="light">Light theme</option>
               <option value="dark">Dark theme</option>
             </select>
+            <button
+              className="settings-button"
+              onClick={() => setSettingsOpen(true)}
+              aria-label="Desktop settings"
+              title="Notifications and dictation settings"
+            >
+              ⚙
+            </button>
           </div>
         </header>
 
         <section
+          ref={conversationRef}
           className="conversation"
           onScroll={(event) => {
             const element = event.currentTarget;
@@ -879,7 +1236,11 @@ export function App(): React.JSX.Element {
           ) : (
             <div className="messages">
               {visibleItems.map((item) => (
-                <article key={item.id} className={`message ${item.kind}`}>
+                <article
+                  key={item.id}
+                  className={`message ${item.kind}`}
+                  data-user-prompt={item.kind === "user" ? "true" : undefined}
+                >
                   <div className="message-icon">{itemIcon(item.kind)}</div>
                   <div className="message-body">
                     <div className="message-heading">
@@ -895,6 +1256,18 @@ export function App(): React.JSX.Element {
                         <span className={`status-pill ${item.status}`}>
                           {item.status}
                         </span>
+                      ) : null}
+                      {item.kind === "user" && item.turnId && selectedThread ? (
+                        <button
+                          className="fork-turn-button"
+                          disabled={running}
+                          onClick={() =>
+                            void forkConversation(selectedThread, item.turnId)
+                          }
+                          title="Fork this conversation through this prompt"
+                        >
+                          Fork here
+                        </button>
                       ) : null}
                     </div>
                     <MessageContent item={item} />
@@ -917,19 +1290,42 @@ export function App(): React.JSX.Element {
             </div>
           )}
           {showJumpToLatest ? (
-            <button
-              className="jump-to-latest"
-              onClick={() => {
-                stickToBottomRef.current = true;
-                setShowJumpToLatest(false);
-                endRef.current?.scrollIntoView({
-                  behavior: "smooth",
-                  block: "end",
-                });
-              }}
-            >
-              ↓ Jump to latest
-            </button>
+            <div className="jump-controls">
+              <button
+                onClick={() => {
+                  const conversation = conversationRef.current;
+                  if (!conversation) return;
+                  const offsets = Array.from(
+                    conversation.querySelectorAll<HTMLElement>(
+                      '[data-user-prompt="true"]',
+                    ),
+                  ).map((element) => element.offsetTop);
+                  const target = previousPromptOffset(
+                    offsets,
+                    conversation.scrollTop,
+                  );
+                  if (target !== null)
+                    conversation.scrollTo({
+                      top: Math.max(0, target - 14),
+                      behavior: "smooth",
+                    });
+                }}
+              >
+                ↑ Previous prompt
+              </button>
+              <button
+                onClick={() => {
+                  stickToBottomRef.current = true;
+                  setShowJumpToLatest(false);
+                  endRef.current?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "end",
+                  });
+                }}
+              >
+                ↓ Jump to latest
+              </button>
+            </div>
           ) : null}
         </section>
 
@@ -943,6 +1339,24 @@ export function App(): React.JSX.Element {
             </div>
           ) : null}
           <div className={`composer ${running ? "running" : ""}`}>
+            {queuedPrompts.length ? (
+              <div className="queued-prompts">
+                {queuedPrompts.map((queued, index) => (
+                  <div className="queued-prompt" key={queued.id}>
+                    <span className="queued-number">{index + 1}</span>
+                    <span>
+                      {queued.text || `${queued.imageCount} queued image(s)`}
+                    </span>
+                    <button
+                      onClick={() => void deleteQueuedPrompt(queued.id)}
+                      aria-label="Remove queued prompt"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
             {attachments.length ? (
               <div className="attachment-strip">
                 {attachments.map((attachment) => (
@@ -982,6 +1396,29 @@ export function App(): React.JSX.Element {
               >
                 ＋
               </button>
+              <button
+                className={`mic-button ${dictationState}`}
+                onClick={() => void startDictation()}
+                disabled={dictationState === "transcribing"}
+                aria-label={
+                  dictationState === "recording"
+                    ? "Stop dictation"
+                    : "Start dictation"
+                }
+                title={
+                  dictationState === "recording"
+                    ? "Stop and transcribe"
+                    : dictationState === "transcribing"
+                      ? "Transcribing…"
+                      : "Dictate prompt"
+                }
+              >
+                {dictationState === "recording"
+                  ? "■"
+                  : dictationState === "transcribing"
+                    ? "…"
+                    : "🎙"}
+              </button>
               <textarea
                 ref={promptRef}
                 value={prompt}
@@ -1007,13 +1444,34 @@ export function App(): React.JSX.Element {
                 rows={1}
               />
               {running ? (
-                <button
-                  className="send-button stop"
-                  onClick={() => void stopTurn()}
-                  aria-label="Stop response"
-                >
-                  ■
-                </button>
+                <div className="active-turn-actions">
+                  <button
+                    className="queue-button"
+                    onClick={() => void queuePrompt()}
+                    disabled={!prompt.trim() && !attachments.length}
+                    aria-label="Queue prompt after current turn"
+                    title="Queue after the current turn"
+                  >
+                    ⇥
+                  </button>
+                  <button
+                    className="send-button"
+                    onClick={() => void steerPrompt()}
+                    disabled={!prompt.trim() && !attachments.length}
+                    aria-label="Steer active turn now"
+                    title="Send as steering instruction now"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    className="send-button stop"
+                    onClick={() => void stopTurn()}
+                    aria-label="Stop response"
+                    title="Stop current turn"
+                  >
+                    ■
+                  </button>
+                </div>
               ) : (
                 <button
                   className="send-button"
@@ -1030,8 +1488,10 @@ export function App(): React.JSX.Element {
             </div>
           </div>
           <p className="composer-note">
-            Enter to send · Shift+Enter for a new line · Drop or paste images ·
-            Changes may require approval
+            {running
+              ? "While working: ↑ steer now · ⇥ queue next · Enter drafts a new line"
+              : "Enter to send · Shift+Enter for a new line · Drop or paste images"}
+            {" · Changes may require approval"}
           </p>
         </footer>
       </main>
@@ -1069,6 +1529,34 @@ export function App(): React.JSX.Element {
             )
           }
           onDelete={deleteThread}
+          busy={running}
+          onFork={() => void forkConversation(threadMenu)}
+          onCompact={() => void compactConversation(threadMenu)}
+          onGoal={() => void openGoal(threadMenu.id)}
+        />
+      ) : null}
+      {goalOpen ? (
+        <GoalDialog
+          goal={goal}
+          onClose={() => setGoalOpen(false)}
+          onSave={saveGoal}
+          onClear={clearGoal}
+        />
+      ) : null}
+      {settingsOpen ? (
+        <SettingsDialog
+          notifications={notificationPreferences}
+          transcription={transcriptionStatus}
+          onClose={() => setSettingsOpen(false)}
+          onNotificationsChange={async (preferences) => {
+            await window.codex.setNotificationPreferences(preferences);
+            setNotificationPreferences(preferences);
+          }}
+          onApiKeyChange={async (apiKey) => {
+            const status = await window.codex.setTranscriptionApiKey(apiKey);
+            setTranscriptionStatus(status);
+            return status;
+          }}
         />
       ) : null}
       {diagnostics ? (
