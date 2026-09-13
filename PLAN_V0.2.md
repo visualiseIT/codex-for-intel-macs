@@ -113,6 +113,10 @@ Turn the functional MVP into a comfortable daily-driver desktop client. Version 
 
 - [x] Fork a thread, optionally from a selected turn, through `thread/fork`.
 - [x] Surface the parent/fork relationship in the thread UI.
+- [x] Group conversations by project/workspace and allow project groups to collapse independently.
+- [x] Render forks as an indented parent/child tree with fork counts and ancestry tooltips.
+- [x] Show a clickable parent breadcrumb in an open fork.
+- [x] Preserve parent context when searching or when a parent is outside the loaded page.
 - [x] Add manual conversation compaction through `thread/compact/start`.
 - [x] Render compaction completion without duplicating timeline items.
 - [x] Add thread goal view/set/clear controls when supported by the installed CLI.
@@ -144,7 +148,10 @@ Turn the functional MVP into a comfortable daily-driver desktop client. Version 
 
 - [ ] Add configurable keyboard shortcuts and a command palette.
 - [x] Add voice-to-text prompt input with explicit recording and transcription states.
-- [ ] Support multiple open workspaces or windows without mixing thread state.
+- [x] Support opening conversations in separate windows without duplicating the Codex process or queued turns.
+- [x] Make the conversation sidebar resizable and collapsible to an icon rail.
+- [x] Persist sidebar width, collapsed state, and collapsed project groups locally.
+- [x] Reset the multiline composer to its compact height after its draft is cleared.
 
 ## Deferred beyond v0.2
 

@@ -178,6 +178,7 @@ export function ThreadActionsDialog({
   onFork,
   onCompact,
   onGoal,
+  onOpenInNewWindow,
   busy,
 }: {
   thread: ThreadSummary;
@@ -192,6 +193,7 @@ export function ThreadActionsDialog({
   onFork: () => void;
   onCompact: () => void;
   onGoal: () => void;
+  onOpenInNewWindow: () => void;
   busy: boolean;
 }): React.JSX.Element {
   return (
@@ -206,6 +208,7 @@ export function ThreadActionsDialog({
         <h2>{thread.title}</h2>
         <p className="modal-detail">{thread.cwd || "No workspace recorded"}</p>
         <div className="thread-action-list">
+          <button onClick={onOpenInNewWindow}>Open in new window</button>
           {!archived ? <button onClick={onRename}>Rename</button> : null}
           {!archived ? (
             <button onClick={onPin}>{pinned ? "Unpin" : "Pin to top"}</button>

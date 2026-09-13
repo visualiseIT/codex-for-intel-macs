@@ -151,7 +151,13 @@ export class CodexService extends EventEmitter {
           this.emitUi({ type: "usage", usage: normalizeUsage(message.params) });
         }
         const event = normalizeNotification(message.method, message.params);
-        if (event) this.emitUi(event);
+        if (event) {
+          this.emitUi(event);
+          if (event.type === "turn" && event.phase === "completed")
+            void this.startNextQueuedPrompt(event.threadId).catch(() => {
+              // The persisted prompt remains available for a later retry.
+            });
+        }
       },
     );
     this.process.on("request", (message: RpcMessage) =>
@@ -254,6 +260,23 @@ export class CodexService extends EventEmitter {
       thread: normalizeThread(result.thread),
       items: normalizeTurns(page.data),
     };
+  }
+
+  async getThreadSummaries(threadIds: string[]): Promise<ThreadSummary[]> {
+    const uniqueIds = [...new Set(threadIds.filter(Boolean))].slice(0, 50);
+    const results = await Promise.allSettled(
+      uniqueIds.map((threadId) =>
+        this.process.request<UnknownRecord>("thread/read", {
+          threadId,
+          includeTurns: false,
+        }),
+      ),
+    );
+    return results.flatMap((result) =>
+      result.status === "fulfilled"
+        ? [normalizeThread(result.value.thread)]
+        : [],
+    );
   }
 
   async createThread(settings: CodexSettings): Promise<ThreadSummary> {
@@ -432,6 +455,7 @@ export class CodexService extends EventEmitter {
 
   resolveInteraction(requestId: number | string, result: unknown): void {
     this.process.respond(requestId, result);
+    this.emitUi({ type: "interaction-resolved", requestId });
   }
 
   private handleServerRequest(message: RpcMessage): void {

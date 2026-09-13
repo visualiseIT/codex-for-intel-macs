@@ -23,6 +23,7 @@ export interface ThreadSummary {
   updatedAt: number;
   status: string;
   forkedFromId: string | null;
+  projectId: string | null;
 }
 
 export interface ThreadListInput {
@@ -212,6 +213,7 @@ export type UiEvent =
       error?: string;
     }
   | { type: "interaction"; interaction: PendingInteraction }
+  | { type: "interaction-resolved"; requestId: number | string }
   | {
       type: "thread-changed";
       threadId: string;
@@ -235,6 +237,8 @@ export interface CodexDesktopApi {
   listThreads(input?: ThreadListInput): Promise<ThreadPage>;
   listModels(): Promise<ModelOption[]>;
   openThread(threadId: string): Promise<OpenThreadResult>;
+  getThreadSummaries(threadIds: string[]): Promise<ThreadSummary[]>;
+  openThreadInNewWindow(threadId: string): Promise<void>;
   createThread(settings: CodexSettings): Promise<ThreadSummary>;
   renameThread(threadId: string, name: string): Promise<void>;
   archiveThread(threadId: string): Promise<void>;

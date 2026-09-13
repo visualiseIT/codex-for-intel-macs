@@ -22,6 +22,10 @@ const api: CodexDesktopApi = {
   listThreads: (input) => ipcRenderer.invoke("codex:list-threads", input),
   listModels: () => ipcRenderer.invoke("codex:list-models"),
   openThread: (threadId) => ipcRenderer.invoke("codex:open-thread", threadId),
+  getThreadSummaries: (threadIds) =>
+    ipcRenderer.invoke("codex:get-thread-summaries", threadIds),
+  openThreadInNewWindow: (threadId) =>
+    ipcRenderer.invoke("app:open-thread-window", threadId),
   createThread: (settings: CodexSettings) =>
     ipcRenderer.invoke("codex:create-thread", settings),
   renameThread: (threadId, name) =>

@@ -33,6 +33,7 @@ import { TranscriptionService } from "./transcription";
 
 const service = new CodexService();
 let mainWindow: BrowserWindow | null = null;
+const windows = new Set<BrowserWindow>();
 let notificationPreferences = DEFAULT_NOTIFICATION_PREFERENCES;
 let preferencesPath = "";
 let transcriptionService: TranscriptionService | null = null;
@@ -67,12 +68,12 @@ function saveNotificationPreferences(value: NotificationPreferences): void {
 }
 
 function sendEvent(event: UiEvent): void {
-  if (mainWindow && !mainWindow.isDestroyed())
-    mainWindow.webContents.send("codex:event", event);
+  for (const window of windows)
+    if (!window.isDestroyed()) window.webContents.send("codex:event", event);
   const spec = notificationForEvent(
     event,
     notificationPreferences,
-    mainWindow?.isFocused() === true,
+    [...windows].some((window) => window.isFocused()),
   );
   if (!spec || shownNotifications.has(spec.key) || !Notification.isSupported())
     return;
@@ -80,10 +81,14 @@ function sendEvent(event: UiEvent): void {
   if (shownNotifications.size > 500) shownNotifications.clear();
   const notification = new Notification({ title: spec.title, body: spec.body });
   notification.on("click", () => {
-    mainWindow?.show();
-    mainWindow?.focus();
-    if (mainWindow && !mainWindow.isDestroyed())
-      mainWindow.webContents.send("codex:event", {
+    const target =
+      mainWindow && !mainWindow.isDestroyed()
+        ? mainWindow
+        : [...windows].find((window) => !window.isDestroyed());
+    target?.show();
+    target?.focus();
+    if (target)
+      target.webContents.send("codex:event", {
         type: "focus-thread",
         threadId: spec.threadId,
       } satisfies UiEvent);
@@ -95,21 +100,23 @@ function registerIpc(): void {
   ipcMain.handle("codex:connection", () => service.getConnectionState());
   ipcMain.handle("app:set-theme", (_event, theme: ThemeMode) => {
     nativeTheme.themeSource = theme;
-    mainWindow?.setBackgroundColor(
-      nativeTheme.shouldUseDarkColors ? "#171815" : "#f4f1ea",
-    );
+    for (const window of windows)
+      window.setBackgroundColor(
+        nativeTheme.shouldUseDarkColors ? "#171815" : "#f4f1ea",
+      );
   });
-  ipcMain.handle("codex:choose-workspace", async () => {
+  ipcMain.handle("codex:choose-workspace", async (event) => {
     const options: Electron.OpenDialogOptions = {
       properties: ["openDirectory", "createDirectory"],
       title: "Choose a Codex workspace",
     };
-    const result = mainWindow
-      ? await dialog.showOpenDialog(mainWindow, options)
+    const parent = BrowserWindow.fromWebContents(event.sender);
+    const result = parent
+      ? await dialog.showOpenDialog(parent, options)
       : await dialog.showOpenDialog(options);
     return result.canceled ? null : (result.filePaths[0] ?? null);
   });
-  ipcMain.handle("codex:choose-images", async () => {
+  ipcMain.handle("codex:choose-images", async (event) => {
     const options: Electron.OpenDialogOptions = {
       properties: ["openFile", "multiSelections"],
       title: "Attach images",
@@ -117,8 +124,9 @@ function registerIpc(): void {
         { name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp"] },
       ],
     };
-    const result = mainWindow
-      ? await dialog.showOpenDialog(mainWindow, options)
+    const parent = BrowserWindow.fromWebContents(event.sender);
+    const result = parent
+      ? await dialog.showOpenDialog(parent, options)
       : await dialog.showOpenDialog(options);
     return result.canceled ? [] : prepareImageAttachments(result.filePaths);
   });
@@ -136,6 +144,13 @@ function registerIpc(): void {
   ipcMain.handle("codex:open-thread", (_event, threadId: string) =>
     service.openThread(threadId),
   );
+  ipcMain.handle("codex:get-thread-summaries", (_event, threadIds: string[]) =>
+    service.getThreadSummaries(threadIds),
+  );
+  ipcMain.handle("app:open-thread-window", (_event, threadId: string) => {
+    if (!threadId.trim()) throw new Error("A conversation ID is required.");
+    createWindow(threadId);
+  });
   ipcMain.handle("codex:create-thread", (_event, settings: CodexSettings) =>
     service.createThread(settings),
   );
@@ -233,8 +248,8 @@ function registerIpc(): void {
   });
 }
 
-function createWindow(): void {
-  mainWindow = new BrowserWindow({
+function createWindow(initialThreadId?: string): BrowserWindow {
+  const window = new BrowserWindow({
     width: 1260,
     height: 820,
     minWidth: 860,
@@ -249,7 +264,16 @@ function createWindow(): void {
     },
   });
 
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+  windows.add(window);
+  mainWindow = window;
+  window.on("closed", () => {
+    windows.delete(window);
+    if (mainWindow === window)
+      mainWindow =
+        [...windows].find((candidate) => !candidate.isDestroyed()) ?? null;
+  });
+
+  window.webContents.setWindowOpenHandler(({ url }) => {
     try {
       const protocol = new URL(url).protocol;
       if (protocol === "https:" || protocol === "http:")
@@ -260,10 +284,12 @@ function createWindow(): void {
     return { action: "deny" };
   });
 
-  mainWindow.webContents.session.setPermissionRequestHandler(
+  window.webContents.session.setPermissionRequestHandler(
     (webContents, permission, callback, details) => {
       const allowMicrophone =
-        webContents === mainWindow?.webContents &&
+        [...windows].some(
+          (candidate) => candidate.webContents === webContents,
+        ) &&
         permission === "media" &&
         "mediaTypes" in details &&
         details.mediaTypes?.includes("audio");
@@ -272,10 +298,16 @@ function createWindow(): void {
   );
 
   if (process.env.ELECTRON_RENDERER_URL) {
-    void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
+    const url = new URL(process.env.ELECTRON_RENDERER_URL);
+    if (initialThreadId) url.searchParams.set("thread", initialThreadId);
+    void window.loadURL(url.toString());
   } else {
-    void mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
+    void window.loadFile(
+      join(__dirname, "../renderer/index.html"),
+      initialThreadId ? { query: { thread: initialThreadId } } : undefined,
+    );
   }
+  return window;
 }
 
 app.whenReady().then(() => {

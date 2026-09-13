@@ -36,10 +36,40 @@ import {
 import { DiffView } from "./DiffView";
 import { RichText } from "./RichText";
 import { isNearBottom, previousPromptOffset } from "./scroll";
+import { ThreadSidebar } from "./ThreadSidebar";
+import { buildThreadProjects } from "./thread-tree";
 
 const LAST_WORKSPACE_KEY = "codex-desktop:last-workspace";
 const THEME_KEY = "codex-desktop:theme";
 const PINNED_THREADS_KEY = "codex-desktop:pinned-threads";
+const SIDEBAR_WIDTH_KEY = "codex-desktop:sidebar-width";
+const SIDEBAR_COLLAPSED_KEY = "codex-desktop:sidebar-collapsed";
+const COLLAPSED_PROJECTS_KEY = "codex-desktop:collapsed-projects";
+const DEFAULT_SIDEBAR_WIDTH = 286;
+
+function initialThreadId(): string | null {
+  return new URLSearchParams(window.location.search).get("thread");
+}
+
+function initialSidebarWidth(): number {
+  const value = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
+  return Number.isFinite(value)
+    ? Math.min(Math.max(value, 220), 480)
+    : DEFAULT_SIDEBAR_WIDTH;
+}
+
+function initialStringSet(key: string): Set<string> {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(key) ?? "[]");
+    return new Set(
+      Array.isArray(value)
+        ? value.filter((item): item is string => typeof item === "string")
+        : [],
+    );
+  } catch {
+    return new Set();
+  }
+}
 
 function initialTheme(): ThemeMode {
   const stored = localStorage.getItem(THEME_KEY);
@@ -74,15 +104,6 @@ function shortPath(value: string): string {
   if (!value) return "Choose workspace";
   const parts = value.split("/").filter(Boolean);
   return parts.length > 2 ? `…/${parts.slice(-2).join("/")}` : value;
-}
-
-function formatDate(timestamp: number): string {
-  if (!timestamp) return "";
-  const date = new Date(timestamp * 1_000);
-  const today = new Date();
-  if (date.toDateString() === today.toDateString())
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  return date.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
 function formatReset(timestamp: number | null): string {
@@ -152,10 +173,18 @@ export function App(): React.JSX.Element {
   const [connection, setConnection] = useState<ConnectionState>("connecting");
   const [connectionMessage, setConnectionMessage] = useState("");
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
+  const [threadContext, setThreadContext] = useState<ThreadSummary[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [threadView, setThreadView] = useState<"active" | "archived">("active");
   const [pinnedThreads, setPinnedThreads] = useState<Set<string>>(initialPins);
+  const [sidebarWidth, setSidebarWidth] = useState(initialSidebarWidth);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true",
+  );
+  const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(() =>
+    initialStringSet(COLLAPSED_PROJECTS_KEY),
+  );
   const [threadMenu, setThreadMenu] = useState<ThreadSummary | null>(null);
   const [models, setModels] = useState<ModelOption[]>([]);
   const [selectedThread, setSelectedThread] = useState<ThreadSummary | null>(
@@ -193,7 +222,7 @@ export function App(): React.JSX.Element {
     "idle" | "recording" | "transcribing"
   >("idle");
   const [pendingThreadFocus, setPendingThreadFocus] = useState<string | null>(
-    null,
+    initialThreadId,
   );
   const [error, setError] = useState("");
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
@@ -205,6 +234,7 @@ export function App(): React.JSX.Element {
   const recordingChunksRef = useRef<Blob[]>([]);
   const stickToBottomRef = useRef(true);
   const endRef = useRef<HTMLDivElement | null>(null);
+  const requestedParentIdsRef = useRef(new Set<string>());
 
   const selectedModel = models.find((model) => model.id === settings.model);
   const effortOptions = selectedModel?.efforts.length
@@ -214,15 +244,25 @@ export function App(): React.JSX.Element {
     !selectedModel || selectedModel.inputModalities.includes("image");
   const archived = threadView === "archived";
 
-  const displayedThreads = useMemo(
-    () =>
-      [...threads].sort((a, b) => {
-        const pinDifference =
-          Number(pinnedThreads.has(b.id)) - Number(pinnedThreads.has(a.id));
-        return pinDifference || b.updatedAt - a.updatedAt;
-      }),
-    [pinnedThreads, threads],
+  const threadProjects = useMemo(
+    () => buildThreadProjects(threads, threadContext, pinnedThreads),
+    [pinnedThreads, threadContext, threads],
   );
+  const threadById = useMemo(
+    () => new Map(threadContext.map((thread) => [thread.id, thread])),
+    [threadContext],
+  );
+  const parentThread = selectedThread?.forkedFromId
+    ? (threadById.get(selectedThread.forkedFromId) ?? null)
+    : null;
+
+  const rememberThreads = useCallback((incoming: ThreadSummary[]) => {
+    setThreadContext((current) => {
+      const merged = new Map(current.map((thread) => [thread.id, thread]));
+      incoming.forEach((thread) => merged.set(thread.id, thread));
+      return [...merged.values()];
+    });
+  }, []);
 
   const refreshThreads = useCallback(
     async (term = "", showArchived = false) => {
@@ -232,12 +272,13 @@ export function App(): React.JSX.Element {
           archived: showArchived,
         });
         setThreads(page.threads);
+        rememberThreads(page.threads);
         setNextCursor(page.nextCursor);
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
       }
     },
-    [],
+    [rememberThreads],
   );
 
   const loadMoreThreads = async (): Promise<void> => {
@@ -256,6 +297,7 @@ export function App(): React.JSX.Element {
           ...page.threads.filter((thread) => !existing.has(thread.id)),
         ];
       });
+      rememberThreads(page.threads);
       setNextCursor(page.nextCursor);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -348,6 +390,14 @@ export function App(): React.JSX.Element {
         setInteractions((current) => [...current, event.interaction]);
         return;
       }
+      if (event.type === "interaction-resolved") {
+        setInteractions((current) =>
+          current.filter(
+            (interaction) => interaction.requestId !== event.requestId,
+          ),
+        );
+        return;
+      }
       if (event.type === "thread-changed") {
         if (
           event.threadId === activeThreadRef.current &&
@@ -362,16 +412,8 @@ export function App(): React.JSX.Element {
         setError(event.message);
         return;
       }
-      if (
-        event.type === "turn" &&
-        event.phase === "completed" &&
-        event.threadId !== activeThreadRef.current
-      ) {
-        void window.codex.startNextQueuedPrompt(event.threadId).catch(() => {
-          // The queued prompt remains persisted and can be retried when reopened.
-        });
+      if (event.type === "turn" && event.threadId !== activeThreadRef.current)
         return;
-      }
       if (event.threadId !== activeThreadRef.current) return;
       if (event.type === "item") {
         setItems((current) => upsertItem(current, event.item));
@@ -393,17 +435,7 @@ export function App(): React.JSX.Element {
           if (event.error) setError(event.error);
           void refreshThreads(search, archived);
           void loadUsage();
-          void window.codex
-            .startNextQueuedPrompt(event.threadId)
-            .then((next) => {
-              if (!next || event.threadId !== activeThreadRef.current) return;
-              setActiveTurnId(next.turnId);
-              setRunning(true);
-              void loadQueuedPrompts(event.threadId);
-            })
-            .catch((cause: unknown) =>
-              setError(cause instanceof Error ? cause.message : String(cause)),
-            );
+          void loadQueuedPrompts(event.threadId);
         }
       }
     },
@@ -470,11 +502,35 @@ export function App(): React.JSX.Element {
   useLayoutEffect(() => {
     const textarea = promptRef.current;
     if (!textarea) return;
-    textarea.style.height = "0px";
+    if (!prompt) {
+      textarea.style.height = "28px";
+      textarea.style.overflowY = "hidden";
+      return;
+    }
+    textarea.style.height = "auto";
     const height = Math.min(Math.max(textarea.scrollHeight, 28), 180);
     textarea.style.height = `${height}px`;
     textarea.style.overflowY = textarea.scrollHeight > 180 ? "auto" : "hidden";
   }, [prompt]);
+
+  useEffect(() => {
+    const known = new Set(threadContext.map((thread) => thread.id));
+    const missing = threadContext
+      .map((thread) => thread.forkedFromId)
+      .filter(
+        (id): id is string =>
+          Boolean(id) &&
+          !known.has(id as string) &&
+          !requestedParentIdsRef.current.has(id as string),
+      )
+      .slice(0, 50);
+    if (!missing.length || connection !== "connected") return;
+    missing.forEach((id) => requestedParentIdsRef.current.add(id));
+    void window.codex
+      .getThreadSummaries(missing)
+      .then(rememberThreads)
+      .catch(() => undefined);
+  }, [connection, rememberThreads, threadContext]);
 
   useEffect(() => {
     if (stickToBottomRef.current)
@@ -494,6 +550,7 @@ export function App(): React.JSX.Element {
       const result = await window.codex.openThread(thread.id);
       activeThreadRef.current = result.thread.id;
       setSelectedThread(result.thread);
+      rememberThreads([result.thread]);
       setItems(result.items);
       void loadQueuedPrompts(result.thread.id);
       void loadGoal(result.thread.id);
@@ -512,12 +569,13 @@ export function App(): React.JSX.Element {
   };
 
   useEffect(() => {
-    if (!pendingThreadFocus) return;
+    if (!pendingThreadFocus || connection !== "connected") return;
     void window.codex
       .openThread(pendingThreadFocus)
       .then((result) => {
         activeThreadRef.current = result.thread.id;
         setSelectedThread(result.thread);
+        rememberThreads([result.thread]);
         setItems(result.items);
         setThreadView("active");
         setSettings((current) => ({
@@ -532,7 +590,51 @@ export function App(): React.JSX.Element {
         setError(cause instanceof Error ? cause.message : String(cause)),
       )
       .finally(() => setPendingThreadFocus(null));
-  }, [loadGoal, loadQueuedPrompts, pendingThreadFocus]);
+  }, [
+    connection,
+    loadGoal,
+    loadQueuedPrompts,
+    pendingThreadFocus,
+    rememberThreads,
+  ]);
+
+  const toggleProject = (key: string): void => {
+    setCollapsedProjects((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      localStorage.setItem(COLLAPSED_PROJECTS_KEY, JSON.stringify([...next]));
+      return next;
+    });
+  };
+
+  const beginSidebarResize = (event: React.PointerEvent): void => {
+    if (sidebarCollapsed) return;
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = sidebarWidth;
+    const move = (moveEvent: PointerEvent): void => {
+      const width = Math.min(
+        Math.max(startWidth + moveEvent.clientX - startX, 220),
+        480,
+      );
+      setSidebarWidth(width);
+      localStorage.setItem(SIDEBAR_WIDTH_KEY, String(width));
+    };
+    const stop = (): void => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+  };
+
+  const toggleSidebar = (): void => {
+    setSidebarCollapsed((current) => {
+      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(!current));
+      return !current;
+    });
+  };
 
   const newChat = (): void => {
     clearConversation();
@@ -877,7 +979,9 @@ export function App(): React.JSX.Element {
     if (!interaction) return;
     try {
       await window.codex.resolveInteraction(interaction.requestId, result);
-      setInteractions((current) => current.slice(1));
+      setInteractions((current) =>
+        current.filter((item) => item.requestId !== interaction.requestId),
+      );
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     }
@@ -961,6 +1065,9 @@ export function App(): React.JSX.Element {
   return (
     <div
       className={`app-shell ${dragging ? "is-dragging" : ""}`}
+      style={{
+        gridTemplateColumns: `${sidebarCollapsed ? 58 : sidebarWidth}px minmax(0, 1fr)`,
+      }}
       onDragEnter={(event) => {
         event.preventDefault();
         setDragging(true);
@@ -975,17 +1082,32 @@ export function App(): React.JSX.Element {
         void attachFiles(event.dataTransfer.files);
       }}
     >
-      <aside className="sidebar">
+      <aside className={`sidebar ${sidebarCollapsed ? "collapsed" : ""}`}>
         <div className="traffic-space" />
         <div className="brand-row">
           <div className="brand-mark">C</div>
-          <div>
+          <div className="brand-copy">
             <strong>Codex</strong>
             <small>Desktop Intel</small>
           </div>
+          <button
+            className="sidebar-toggle"
+            onClick={toggleSidebar}
+            title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-label={
+              sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"
+            }
+          >
+            {sidebarCollapsed ? "›" : "‹"}
+          </button>
         </div>
-        <button className="new-chat-button" onClick={newChat}>
-          <span>＋</span> New conversation
+        <button
+          className="new-chat-button"
+          onClick={newChat}
+          title="New conversation"
+        >
+          <span>＋</span>{" "}
+          <span className="new-chat-label">New conversation</span>
         </button>
         <div className="search-wrap">
           <span>⌕</span>
@@ -1014,35 +1136,15 @@ export function App(): React.JSX.Element {
           </button>
         </div>
         <nav className="thread-list" aria-label="Conversation history">
-          {displayedThreads.map((thread) => (
-            <div
-              className={`thread-row-wrap ${selectedThread?.id === thread.id ? "selected" : ""}`}
-              key={thread.id}
-            >
-              <button
-                className="thread-row"
-                onClick={() => void openThread(thread)}
-              >
-                <span className="thread-title">
-                  {pinnedThreads.has(thread.id) ? (
-                    <span className="pin-mark">◆</span>
-                  ) : null}
-                  {thread.title}
-                </span>
-                <span className="thread-meta">
-                  <span>{shortPath(thread.cwd)}</span>
-                  <time>{formatDate(thread.updatedAt)}</time>
-                </span>
-              </button>
-              <button
-                className="thread-more"
-                onClick={() => setThreadMenu(thread)}
-                aria-label={`Manage ${thread.title}`}
-              >
-                •••
-              </button>
-            </div>
-          ))}
+          <ThreadSidebar
+            groups={threadProjects}
+            collapsedProjects={collapsedProjects}
+            selectedThreadId={selectedThread?.id ?? null}
+            pinnedThreads={pinnedThreads}
+            onToggleProject={toggleProject}
+            onOpen={(thread) => void openThread(thread)}
+            onManage={setThreadMenu}
+          />
           {!threads.length && connection === "connected" ? (
             <p className="empty-sidebar">No matching conversations.</p>
           ) : null}
@@ -1061,13 +1163,27 @@ export function App(): React.JSX.Element {
           onClick={() => void showDiagnostics()}
         >
           <span className={`connection-dot ${connection}`} />
-          <span>
+          <span className="connection-copy">
             {connection === "connected"
               ? "Codex connected"
               : connectionMessage || connection}
           </span>
           <span className="connection-help">ⓘ</span>
         </button>
+        <div
+          className="sidebar-resizer"
+          onPointerDown={beginSidebarResize}
+          onDoubleClick={() => {
+            setSidebarWidth(DEFAULT_SIDEBAR_WIDTH);
+            localStorage.setItem(
+              SIDEBAR_WIDTH_KEY,
+              String(DEFAULT_SIDEBAR_WIDTH),
+            );
+          }}
+          role="separator"
+          aria-label="Resize sidebar"
+          aria-orientation="vertical"
+        />
       </aside>
 
       <main className="main-panel">
@@ -1082,9 +1198,17 @@ export function App(): React.JSX.Element {
               <span>{shortPath(settings.cwd)}</span>
             </button>
             {selectedThread?.forkedFromId ? (
-              <span className="fork-badge" title={selectedThread.forkedFromId}>
-                Fork of {selectedThread.forkedFromId.slice(0, 8)}…
-              </span>
+              <button
+                className="fork-badge"
+                title={`Open parent conversation: ${parentThread?.title ?? selectedThread.forkedFromId}`}
+                onClick={() =>
+                  setPendingThreadFocus(selectedThread.forkedFromId)
+                }
+              >
+                ↳ Fork of{" "}
+                {parentThread?.title ??
+                  `${selectedThread.forkedFromId.slice(0, 8)}…`}
+              </button>
             ) : null}
             {selectedThread ? (
               <button
@@ -1533,6 +1657,16 @@ export function App(): React.JSX.Element {
           onFork={() => void forkConversation(threadMenu)}
           onCompact={() => void compactConversation(threadMenu)}
           onGoal={() => void openGoal(threadMenu.id)}
+          onOpenInNewWindow={() => {
+            void window.codex
+              .openThreadInNewWindow(threadMenu.id)
+              .catch((cause: unknown) =>
+                setError(
+                  cause instanceof Error ? cause.message : String(cause),
+                ),
+              );
+            setThreadMenu(null);
+          }}
         />
       ) : null}
       {goalOpen ? (

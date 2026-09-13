@@ -17,7 +17,7 @@ A small local macOS desktop client for the Codex CLI, designed to be packaged fo
 - Image selection, drag-and-drop, clipboard paste, previews, and model capability checks.
 - Safe workspace-relative references when non-image files are dropped into the composer.
 - Optional ChatGPT usage display plus reconnect and redacted diagnostics controls.
-- A composer that grows naturally for multiline prompts before it begins scrolling.
+- A composer that grows naturally for multiline prompts, then returns to its compact height when cleared.
 - Drafting the next prompt while a turn is still running.
 - User-controlled conversation scrolling with a **Jump to latest** shortcut.
 - A **Previous prompt** shortcut while browsing earlier output.
@@ -25,6 +25,9 @@ A small local macOS desktop client for the Codex CLI, designed to be packaged fo
 - File-change details collapsed by default to keep long conversations navigable.
 - A distinctive custom Dock and application icon.
 - Whole-thread and per-prompt forks, manual context compaction, and conversation goals.
+- Project-grouped conversation history with indented fork trees, parent breadcrumbs, and fork counts.
+- A resizable sidebar that collapses to a compact icon rail and remembers its layout.
+- The ability to open a conversation in another window without starting another Codex process.
 - Configurable background completion and attention notifications.
 - Push-to-record microphone dictation using OpenAI's `gpt-transcribe` service.
 - Conservative defaults: workspace-write access, no sandbox network access, and on-request approvals.

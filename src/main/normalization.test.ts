@@ -29,6 +29,7 @@ describe("Codex protocol normalization", () => {
       updatedAt: 20,
       status: "notLoaded",
       forkedFromId: null,
+      projectId: null,
     });
   });
 
