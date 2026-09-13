@@ -1,8 +1,9 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  persistClipboardImages,
   prepareFileReferences,
   prepareImageAttachments,
 } from "./image-attachments";
@@ -18,6 +19,48 @@ afterEach(async () => {
 });
 
 describe("prepareImageAttachments", () => {
+  it("persists a pathless clipboard screenshot for Codex and history", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "codex-clipboard-"));
+    directories.push(directory);
+
+    const [image] = await persistClipboardImages(
+      [
+        {
+          bytes: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+          mimeType: "image/png",
+          name: "Clipboard screenshot",
+        },
+      ],
+      directory,
+    );
+
+    expect(image).toMatchObject({
+      name: "Clipboard screenshot",
+      size: 4,
+      dataUrl: "data:image/png;base64,iVBORw==",
+    });
+    await expect(readFile(image.path)).resolves.toEqual(
+      Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+    );
+  });
+
+  it("rejects unsupported clipboard image types", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "codex-clipboard-"));
+    directories.push(directory);
+    await expect(
+      persistClipboardImages(
+        [
+          {
+            bytes: new Uint8Array([1]),
+            mimeType: "image/svg+xml",
+            name: "Vector",
+          },
+        ],
+        directory,
+      ),
+    ).rejects.toThrow("not supported");
+  });
+
   it("prepares a supported local image for renderer preview", async () => {
     const directory = await mkdtemp(join(tmpdir(), "codex-images-"));
     directories.push(directory);

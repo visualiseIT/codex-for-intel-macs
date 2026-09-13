@@ -1,13 +1,15 @@
-import { readFile, stat } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import {
   basename,
   extname,
   isAbsolute,
+  join,
   relative,
   resolve,
   sep,
 } from "node:path";
-import type { ImageAttachment } from "../shared/types";
+import type { ClipboardImageInput, ImageAttachment } from "../shared/types";
 
 const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 const MAX_IMAGES = 8;
@@ -18,6 +20,55 @@ const MIME_TYPES: Record<string, string> = {
   ".png": "image/png",
   ".webp": "image/webp",
 };
+const MIME_EXTENSIONS: Record<string, string> = {
+  "image/gif": ".gif",
+  "image/jpeg": ".jpg",
+  "image/png": ".png",
+  "image/webp": ".webp",
+};
+
+export async function persistClipboardImages(
+  images: ClipboardImageInput[],
+  directory: string,
+): Promise<ImageAttachment[]> {
+  if (!Array.isArray(images) || images.length > MAX_IMAGES)
+    throw new Error(`Paste at most ${MAX_IMAGES} images at a time.`);
+  let totalBytes = 0;
+  const validated = images.map((image, index) => {
+    if (!image || typeof image.mimeType !== "string")
+      throw new Error("Invalid clipboard image.");
+    const extension = MIME_EXTENSIONS[image.mimeType];
+    if (!extension) throw new Error("Clipboard image type is not supported.");
+    const data = Buffer.from(image.bytes);
+    totalBytes += data.byteLength;
+    if (!data.byteLength || data.byteLength > MAX_IMAGE_BYTES)
+      throw new Error("A clipboard image is empty or larger than 15 MB.");
+    if (totalBytes > 30 * 1024 * 1024)
+      throw new Error("Attachments must be 30 MB or less in total.");
+    return {
+      data,
+      extension,
+      mimeType: image.mimeType,
+      name: image.name?.trim() || `Screenshot ${index + 1}`,
+    };
+  });
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  return Promise.all(
+    validated.map(async (image) => {
+      const path = join(
+        directory,
+        `${Date.now()}-${randomUUID()}${image.extension}`,
+      );
+      await writeFile(path, image.data, { mode: 0o600 });
+      return {
+        path,
+        name: image.name,
+        size: image.data.byteLength,
+        dataUrl: `data:${image.mimeType};base64,${image.data.toString("base64")}`,
+      };
+    }),
+  );
+}
 
 export async function prepareImageAttachments(
   paths: string[],

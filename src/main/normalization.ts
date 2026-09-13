@@ -29,8 +29,7 @@ function userText(content: unknown): string {
     .map((part) => {
       const value = record(part);
       if (value.type === "text") return string(value.text);
-      if (value.type === "image" || value.type === "localImage")
-        return "[Image]";
+      if (value.type === "image" || value.type === "localImage") return "";
       if (value.type === "audio" || value.type === "localAudio")
         return "[Audio]";
       if (value.type === "skill") return `$${string(value.name, "skill")}`;
@@ -39,6 +38,32 @@ function userText(content: unknown): string {
     })
     .filter(Boolean)
     .join("\n");
+}
+
+function userImages(content: unknown): ChatItem["images"] {
+  if (!Array.isArray(content)) return [];
+  return content.flatMap((part) => {
+    const value = record(part);
+    if (value.type === "localImage") {
+      const path = string(value.path);
+      if (!path) return [];
+      const filename = path.split(/[\\/]/).at(-1) ?? "Image";
+      return [
+        {
+          path,
+          name: path.includes("/clipboard-images/") ? "Screenshot" : filename,
+          size: 0,
+          dataUrl: "",
+        },
+      ];
+    }
+    if (value.type === "image") {
+      const url = string(value.url);
+      if (!url.startsWith("data:image/")) return [];
+      return [{ path: "", name: "Image", size: 0, dataUrl: url }];
+    }
+    return [];
+  });
 }
 
 function normalizeChanges(changes: unknown): FileChange[] {
@@ -80,7 +105,13 @@ export function normalizeItem(value: unknown, turnId?: string): ChatItem {
 
   switch (type) {
     case "userMessage":
-      return { id, kind: "user", text: userText(item.content), turnId };
+      return {
+        id,
+        kind: "user",
+        text: userText(item.content),
+        images: userImages(item.content),
+        turnId,
+      };
     case "agentMessage":
       return { id, kind: "assistant", text: string(item.text), turnId };
     case "plan":

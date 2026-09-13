@@ -60,6 +60,29 @@ describe("Codex protocol normalization", () => {
     });
   });
 
+  it("keeps local user images for history thumbnails without placeholder text", () => {
+    expect(
+      normalizeItem({
+        type: "userMessage",
+        id: "user-image",
+        content: [
+          { type: "text", text: "Please inspect this" },
+          { type: "localImage", path: "/tmp/screenshot.png" },
+        ],
+      }),
+    ).toMatchObject({
+      kind: "user",
+      text: "Please inspect this",
+      images: [
+        {
+          path: "/tmp/screenshot.png",
+          name: "screenshot.png",
+          dataUrl: "",
+        },
+      ],
+    });
+  });
+
   it("maps goals, queues, and compaction notifications", () => {
     expect(
       normalizeNotification("thread/queue/changed", {

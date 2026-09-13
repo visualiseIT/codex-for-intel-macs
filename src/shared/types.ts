@@ -61,6 +61,7 @@ export interface ChatItem {
   text: string;
   status?: string;
   changes?: FileChange[];
+  images?: ImageAttachment[];
   turnId?: string;
 }
 
@@ -79,6 +80,12 @@ export interface ImageAttachment {
   name: string;
   size: number;
   dataUrl: string;
+}
+
+export interface ClipboardImageInput {
+  bytes: Uint8Array;
+  mimeType: string;
+  name: string;
 }
 
 export interface OpenThreadResult {
@@ -232,6 +239,9 @@ export interface CodexDesktopApi {
   chooseWorkspace(): Promise<string | null>;
   chooseImages(): Promise<ImageAttachment[]>;
   prepareImages(paths: string[]): Promise<ImageAttachment[]>;
+  prepareClipboardImages(
+    images: ClipboardImageInput[],
+  ): Promise<ImageAttachment[]>;
   referenceFiles(paths: string[], cwd: string): Promise<string[]>;
   getDroppedFilePath(file: File): string;
   listThreads(input?: ThreadListInput): Promise<ThreadPage>;

@@ -11,6 +11,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type {
   CodexSettings,
+  ClipboardImageInput,
   DictationAudio,
   NotificationPreferences,
   StartTurnInput,
@@ -22,6 +23,7 @@ import type {
 } from "../shared/types";
 import { CodexService } from "./codex-service";
 import {
+  persistClipboardImages,
   prepareFileReferences,
   prepareImageAttachments,
 } from "./image-attachments";
@@ -37,6 +39,7 @@ const windows = new Set<BrowserWindow>();
 let notificationPreferences = DEFAULT_NOTIFICATION_PREFERENCES;
 let preferencesPath = "";
 let transcriptionService: TranscriptionService | null = null;
+let attachmentStoragePath = "";
 const shownNotifications = new Set<string>();
 
 function readNotificationPreferences(): NotificationPreferences {
@@ -132,6 +135,14 @@ function registerIpc(): void {
   });
   ipcMain.handle("codex:prepare-images", (_event, paths: string[]) =>
     prepareImageAttachments(paths),
+  );
+  ipcMain.handle(
+    "codex:prepare-clipboard-images",
+    (_event, images: ClipboardImageInput[]) => {
+      if (!attachmentStoragePath)
+        throw new Error("Clipboard storage is not ready.");
+      return persistClipboardImages(images, attachmentStoragePath);
+    },
   );
   ipcMain.handle(
     "codex:reference-files",
@@ -317,6 +328,7 @@ app.whenReady().then(() => {
   transcriptionService = new TranscriptionService(
     join(userData, "transcription-api-key.enc"),
   );
+  attachmentStoragePath = join(userData, "clipboard-images");
   registerIpc();
   service.on("event", sendEvent);
   createWindow();

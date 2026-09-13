@@ -628,6 +628,22 @@ button {
   white-space: pre-wrap;
   word-break: break-word;
 }
+.message-image-grid {
+  display: grid;
+  max-width: 560px;
+  margin-top: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+.message-image-grid img {
+  display: block;
+  width: 100%;
+  max-height: 280px;
+  border: 1px solid #d4cfc4;
+  border-radius: 10px;
+  background: #eeece5;
+  object-fit: contain;
+}
 .message.command .message-body,
 .message.file .message-body,
 .message.tool .message-body,
@@ -1681,20 +1697,29 @@ button {
   display: grid;
   width: 80px;
   flex: 0 0 auto;
-  gap: 3px;
+  overflow: hidden;
+  border: 1px solid #d4cfc4;
+  border-radius: 9px;
+  background: #eeece5;
 }
 .attachment img {
   width: 80px;
   height: 54px;
   object-fit: cover;
-  border: 1px solid #d4cfc4;
-  border-radius: 7px;
-  background: #eeece5;
+  border: 0;
+  border-radius: 0;
 }
 .attachment span {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  left: 3px;
+  padding: 3px 5px;
   overflow: hidden;
-  color: #7b766c;
-  font-size: 8.5px;
+  border-radius: 5px;
+  color: white;
+  background: #1d1d1bbd;
+  font-size: 8px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1990,6 +2015,11 @@ button {
   background: #33342d;
 }
 :root[data-theme="dark"] .attachment img {
+  border-color: #45473e;
+  background: #292a25;
+}
+:root[data-theme="dark"] .attachment,
+:root[data-theme="dark"] .message-image-grid img {
   border-color: #45473e;
   background: #292a25;
 }

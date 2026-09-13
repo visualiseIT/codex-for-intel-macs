@@ -16,6 +16,8 @@ const api: CodexDesktopApi = {
   chooseWorkspace: () => ipcRenderer.invoke("codex:choose-workspace"),
   chooseImages: () => ipcRenderer.invoke("codex:choose-images"),
   prepareImages: (paths) => ipcRenderer.invoke("codex:prepare-images", paths),
+  prepareClipboardImages: (images) =>
+    ipcRenderer.invoke("codex:prepare-clipboard-images", images),
   referenceFiles: (paths, cwd) =>
     ipcRenderer.invoke("codex:reference-files", paths, cwd),
   getDroppedFilePath: (file) => webUtils.getPathForFile(file),

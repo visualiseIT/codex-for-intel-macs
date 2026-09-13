@@ -64,10 +64,12 @@ Turn the functional MVP into a comfortable daily-driver desktop client. Version 
 - [x] Add an attachment picker to the composer.
 - [x] Support drag-and-drop and clipboard paste for local images.
 - [x] Show removable image previews before sending.
+- [x] Accept pathless screenshots copied directly from the macOS clipboard.
+- [x] Preserve sent image thumbnails in reopened conversation history.
 - [x] Send images as app-server `localImage` inputs.
 - [x] Check the selected model's advertised input modalities and disable image sending when unsupported.
 - [x] Validate paths, supported image types, file sizes, and missing files before sending.
-- [x] Never copy attachments into application storage unless the user explicitly requests it.
+- [x] Keep selected files in place; persist only pathless clipboard screenshots in private application storage so history can display them later.
 - [x] Add a safe general-file workflow that inserts a workspace-relative file reference into the prompt; do not pretend arbitrary files are native app-server attachments.
 
 ### Usage, connection, and diagnostics

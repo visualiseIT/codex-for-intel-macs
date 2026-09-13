@@ -1,8 +1,11 @@
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import type {
   CodexSettings,
   CodexDiagnostics,
+  ChatItem,
   ConnectionState,
   ModelOption,
   OpenThreadResult,
@@ -21,6 +24,8 @@ import type {
   UserInputQuestion,
 } from "../shared/types";
 import { CodexProcess } from "./codex-process";
+import { prepareImageAttachments } from "./image-attachments";
+import { loadLegacyLineage } from "./legacy-lineage";
 import {
   normalizeNotification,
   normalizeThread,
@@ -39,6 +44,33 @@ function record(value: unknown): UnknownRecord {
   return typeof value === "object" && value !== null
     ? (value as UnknownRecord)
     : {};
+}
+
+async function hydrateItemImages(item: ChatItem): Promise<ChatItem> {
+  const images = item.images ?? [];
+  const local = images.filter((image) => image.path && !image.dataUrl);
+  if (!local.length) return item;
+  const loaded = await Promise.allSettled(
+    local.map(async (image) => {
+      const [prepared] = await prepareImageAttachments([image.path]);
+      return { ...prepared, name: image.name || prepared.name };
+    }),
+  );
+  const byPath = new Map(
+    loaded.flatMap((result) =>
+      result.status === "fulfilled"
+        ? [[result.value.path, result.value] as const]
+        : [],
+    ),
+  );
+  return {
+    ...item,
+    images: images.flatMap((image) => {
+      if (image.dataUrl) return [image];
+      const hydrated = byPath.get(image.path);
+      return hydrated ? [hydrated] : [];
+    }),
+  };
 }
 
 function string(value: unknown, fallback = ""): string {
@@ -139,6 +171,9 @@ function sandboxPolicy(settings: CodexSettings): unknown {
 
 export class CodexService extends EventEmitter {
   private readonly process = new CodexProcess();
+  private readonly legacyLineage = loadLegacyLineage(
+    join(process.env.CODEX_HOME || join(homedir(), ".codex"), "sessions"),
+  );
   private state: ConnectionState = "disconnected";
   private stateMessage: string | undefined;
 
@@ -152,7 +187,11 @@ export class CodexService extends EventEmitter {
         }
         const event = normalizeNotification(message.method, message.params);
         if (event) {
-          this.emitUi(event);
+          if (event.type === "item" && event.item.images?.length)
+            void hydrateItemImages(event.item).then((item) =>
+              this.emitUi({ ...event, item }),
+            );
+          else this.emitUi(event);
           if (event.type === "turn" && event.phase === "completed")
             void this.startNextQueuedPrompt(event.threadId).catch(() => {
               // The persisted prompt remains available for a later retry.
@@ -208,8 +247,19 @@ export class CodexService extends EventEmitter {
       ...(input.searchTerm ? { searchTerm: input.searchTerm } : {}),
     });
     const data = result.data;
+    const legacyLineage = await this.legacyLineage;
     return {
-      threads: Array.isArray(data) ? data.map(normalizeThread) : [],
+      threads: Array.isArray(data)
+        ? data.map((value) => {
+            const thread = normalizeThread(value);
+            return thread.forkedFromId
+              ? thread
+              : {
+                  ...thread,
+                  forkedFromId: legacyLineage.get(thread.id) ?? null,
+                };
+          })
+        : [],
       nextCursor:
         typeof result.nextCursor === "string" ? result.nextCursor : null,
     };
@@ -256,9 +306,19 @@ export class CodexService extends EventEmitter {
       },
     });
     const page = record(result.initialTurnsPage);
+    const items = await Promise.all(
+      normalizeTurns(page.data).map(hydrateItemImages),
+    );
+    const thread = normalizeThread(result.thread);
+    const legacyLineage = await this.legacyLineage;
     return {
-      thread: normalizeThread(result.thread),
-      items: normalizeTurns(page.data),
+      thread: thread.forkedFromId
+        ? thread
+        : {
+            ...thread,
+            forkedFromId: legacyLineage.get(thread.id) ?? null,
+          },
+      items,
     };
   }
 
@@ -272,11 +332,19 @@ export class CodexService extends EventEmitter {
         }),
       ),
     );
-    return results.flatMap((result) =>
-      result.status === "fulfilled"
-        ? [normalizeThread(result.value.thread)]
-        : [],
-    );
+    const legacyLineage = await this.legacyLineage;
+    return results.flatMap((result) => {
+      if (result.status !== "fulfilled") return [];
+      const thread = normalizeThread(result.value.thread);
+      return [
+        thread.forkedFromId
+          ? thread
+          : {
+              ...thread,
+              forkedFromId: legacyLineage.get(thread.id) ?? null,
+            },
+      ];
+    });
   }
 
   async createThread(settings: CodexSettings): Promise<ThreadSummary> {

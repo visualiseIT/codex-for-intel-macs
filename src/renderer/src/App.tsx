@@ -145,6 +145,24 @@ const MessageContent = memo(function MessageContent({
 }: {
   item: ChatItem;
 }): React.JSX.Element | null {
+  if (item.kind === "user")
+    return item.text || item.images?.length ? (
+      <>
+        {item.text ? <pre className="plain-message">{item.text}</pre> : null}
+        {item.images?.length ? (
+          <div className="message-image-grid">
+            {item.images.map((image, index) => (
+              <img
+                key={`${image.path}-${index}`}
+                src={image.dataUrl}
+                alt={image.name || `Attached image ${index + 1}`}
+                title={image.name}
+              />
+            ))}
+          </div>
+        ) : null}
+      </>
+    ) : null;
   if (item.kind === "file")
     return item.changes?.length ? (
       <DiffView changes={item.changes} />
@@ -733,6 +751,34 @@ export function App(): React.JSX.Element {
         setPrompt(
           (current) =>
             `${current}${current.trim() ? "\n\n" : ""}Please inspect these workspace files:\n${referenceText}`,
+        );
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  };
+
+  const pasteClipboardImages = async (files: File[]): Promise<void> => {
+    try {
+      const pathBacked: string[] = [];
+      const pathless: File[] = [];
+      for (const file of files) {
+        const path = window.codex.getDroppedFilePath(file);
+        if (path) pathBacked.push(path);
+        else pathless.push(file);
+      }
+      if (pathBacked.length)
+        addAttachments(await window.codex.prepareImages(pathBacked));
+      if (pathless.length) {
+        const clipboardImages = await Promise.all(
+          pathless.map(async (file, index) => ({
+            bytes: new Uint8Array(await file.arrayBuffer()),
+            mimeType: file.type,
+            name: `Screenshot${pathless.length > 1 ? ` ${index + 1}` : ""}`,
+          })),
+        );
+        addAttachments(
+          await window.codex.prepareClipboardImages(clipboardImages),
         );
       }
     } catch (cause) {
@@ -1548,8 +1594,17 @@ export function App(): React.JSX.Element {
                 value={prompt}
                 onChange={(event) => setPrompt(event.target.value)}
                 onPaste={(event) => {
-                  if (event.clipboardData.files.length)
-                    void attachFiles(event.clipboardData.files);
+                  const images = Array.from(event.clipboardData.items)
+                    .filter(
+                      (item) =>
+                        item.kind === "file" && item.type.startsWith("image/"),
+                    )
+                    .map((item) => item.getAsFile())
+                    .filter((file): file is File => file !== null);
+                  if (images.length) {
+                    event.preventDefault();
+                    void pasteClipboardImages(images);
+                  }
                 }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey && !running) {

@@ -14,7 +14,8 @@ A small local macOS desktop client for the Codex CLI, designed to be packaged fo
 - Persistent system, light, and dark appearance modes.
 - GitHub-flavored Markdown, syntax-highlighted code, copy buttons, and unified diff views.
 - Thread rename, local pinning, archive/restore, permanent deletion, and cursor pagination.
-- Image selection, drag-and-drop, clipboard paste, previews, and model capability checks.
+- Image selection, drag-and-drop, native clipboard screenshots, polished previews, and model capability checks.
+- User-message image thumbnails remain visible when reopening conversation history.
 - Safe workspace-relative references when non-image files are dropped into the composer.
 - Optional ChatGPT usage display plus reconnect and redacted diagnostics controls.
 - A composer that grows naturally for multiline prompts, then returns to its compact height when cleared.
@@ -32,7 +33,7 @@ A small local macOS desktop client for the Codex CLI, designed to be packaged fo
 - Push-to-record microphone dictation using OpenAI's `gpt-transcribe` service.
 - Conservative defaults: workspace-write access, no sandbox network access, and on-request approvals.
 
-Codex remains the source of truth for thread history and authentication. The app only remembers UI preferences such as the selected workspace, theme, and locally pinned thread IDs. Pinning is local in this release because the installed Codex CLI schema does not yet expose server-side pin metadata.
+Codex remains the source of truth for thread history and authentication. The app only remembers UI preferences such as the selected workspace, theme, and locally pinned thread IDs. Clipboard screenshots—which have no source file—are stored in the app's private data directory so Codex can receive them and history can display them later. Pinning is local in this release because the installed Codex CLI schema does not yet expose server-side pin metadata.
 
 ## Requirements
 
