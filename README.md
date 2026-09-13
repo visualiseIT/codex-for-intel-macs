@@ -29,7 +29,7 @@ A small local macOS desktop client for the Codex CLI, designed to be packaged fo
 - Project-grouped conversation history with indented fork trees, parent breadcrumbs, and fork counts.
 - A resizable sidebar that collapses to a compact icon rail and remembers its layout.
 - The ability to open a conversation in another window without starting another Codex process.
-- Configurable background completion and attention notifications.
+- Configurable background completion and attention notifications, with a delivery test in Settings.
 - Push-to-record microphone dictation using OpenAI's `gpt-transcribe` service.
 - Conservative defaults: workspace-write access, no sandbox network access, and on-request approvals.
 
@@ -44,7 +44,7 @@ Codex remains the source of truth for thread history and authentication. The app
 
 The application looks for `codex` in `PATH`, common Homebrew/npm locations, and installed NVM Node versions. It also preserves the discovered NVM binary directory when launching Codex, because macOS GUI applications do not inherit the Terminal's full `PATH`. If it cannot locate the CLI, set `CODEX_BINARY` to its absolute path before launching.
 
-Microphone dictation records a bounded WebM clip and sends it to the OpenAI Audio transcription API. Open **Desktop settings** to add an OpenAI API key; it is encrypted through macOS Keychain-backed storage and is never returned to the renderer. `OPENAI_API_KEY` is also supported and takes precedence. Audio API usage is billed separately from a Codex subscription.
+Microphone dictation requests native macOS microphone permission, records a bounded WebM clip, and sends it to the OpenAI Audio transcription API. Open **Desktop settings** to grant microphone access and add an OpenAI API key; the key is encrypted through macOS Keychain-backed storage and is never returned to the renderer. `OPENAI_API_KEY` is also supported and takes precedence. Audio API usage is billed separately from a Codex subscription.
 
 ## Run locally
 
@@ -71,7 +71,7 @@ This runs ESLint, TypeScript, unit tests, and a production build.
 npm run package:mac:x64
 ```
 
-Unsigned `.dmg` and `.zip` artifacts are written to `release/`. macOS may require you to right-click and choose **Open** for a locally built, unsigned application. Code signing, notarization, and auto-update are intentionally outside the MVP.
+Ad-hoc-signed `.dmg` and `.zip` artifacts are written to `release/`. They are intended for use on the Mac that built them, and macOS may still require you to right-click and choose **Open**. Developer ID signing, notarization, and auto-update remain outside the MVP.
 
 Every distributable rebuild must use a new version number so artifacts and installed builds are unambiguous; never overwrite a previously packaged version.
 

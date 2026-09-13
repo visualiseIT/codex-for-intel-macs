@@ -5,6 +5,7 @@ import type {
   CodexSettings,
   ConnectionState,
   ImageAttachment,
+  MicrophonePermissionStatus,
   ModelOption,
   NotificationPreferences,
   PendingInteraction,
@@ -263,6 +264,8 @@ export function App(): React.JSX.Element {
   const [dictationState, setDictationState] = useState<
     "idle" | "recording" | "transcribing"
   >("idle");
+  const [microphonePermission, setMicrophonePermission] =
+    useState<MicrophonePermissionStatus>("unknown");
   const [pendingThreadFocus, setPendingThreadFocus] = useState<string | null>(
     initialThreadId,
   );
@@ -536,6 +539,9 @@ export function App(): React.JSX.Element {
       .getNotificationPreferences()
       .then(setNotificationPreferences);
     void window.codex.getTranscriptionStatus().then(setTranscriptionStatus);
+    void window.codex
+      .getMicrophonePermissionStatus()
+      .then(setMicrophonePermission);
     return () => {
       recorderRef.current?.stop();
       recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -985,6 +991,17 @@ export function App(): React.JSX.Element {
     }
     try {
       setError("");
+      const permission = await window.codex.requestMicrophonePermission();
+      setMicrophonePermission(permission);
+      if (permission !== "granted") {
+        throw new Error(
+          permission === "denied"
+            ? "Microphone access is denied. Enable Codex Desktop Intel in System Settings → Privacy & Security → Microphone, then restart the app."
+            : permission === "restricted"
+              ? "Microphone access is restricted by macOS or device policy."
+              : "macOS did not grant microphone access. Try again from Desktop Settings.",
+        );
+      }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const preferred = ["audio/webm;codecs=opus", "audio/webm"].find((type) =>
         MediaRecorder.isTypeSupported(type),
@@ -1736,8 +1753,16 @@ export function App(): React.JSX.Element {
           notifications={notificationPreferences}
           transcription={transcriptionStatus}
           theme={theme}
+          microphonePermission={microphonePermission}
           onClose={() => setSettingsOpen(false)}
           onThemeChange={setTheme}
+          onRequestMicrophonePermission={async () => {
+            const status = await window.codex.requestMicrophonePermission();
+            setMicrophonePermission(status);
+            return status;
+          }}
+          onOpenMicrophoneSettings={() => window.codex.openMicrophoneSettings()}
+          onTestNotification={() => window.codex.showTestNotification()}
           onNotificationsChange={async (preferences) => {
             await window.codex.setNotificationPreferences(preferences);
             setNotificationPreferences(preferences);

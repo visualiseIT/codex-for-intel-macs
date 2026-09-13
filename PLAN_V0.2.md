@@ -129,6 +129,8 @@ Turn the functional MVP into a comfortable daily-driver desktop client. Version 
 - [x] Notify when Codex is waiting for approval or user input.
 - [x] Add notification preferences and avoid duplicate notifications.
 - [x] Clicking a notification should focus the relevant thread.
+- [x] Add notification delivery testing and surface native failures.
+- [x] Ad-hoc sign local builds so macOS can register native notifications.
 
 ## P2 — Stretch features
 
@@ -150,6 +152,7 @@ Turn the functional MVP into a comfortable daily-driver desktop client. Version 
 
 - [ ] Add configurable keyboard shortcuts and a command palette.
 - [x] Add voice-to-text prompt input with explicit recording and transcription states.
+- [x] Request and report native macOS microphone permission before recording.
 - [x] Support opening conversations in separate windows without duplicating the Codex process or queued turns.
 - [x] Make the conversation sidebar resizable and collapsible to an icon rail.
 - [x] Persist sidebar width, collapsed state, and collapsed project groups locally.
@@ -157,7 +160,7 @@ Turn the functional MVP into a comfortable daily-driver desktop client. Version 
 
 ## Deferred beyond v0.2
 
-- [ ] Code signing, notarization, and a repeatable distribution pipeline.
+- [ ] Developer ID signing, notarization, and a repeatable distribution pipeline.
 - [ ] Automatic updates with signed release metadata and rollback behavior.
 - [ ] Remote app-server connections. WebSocket transport is currently experimental and should not be exposed as a normal user option yet.
 - [ ] Multiple simultaneous remote app-server connections.

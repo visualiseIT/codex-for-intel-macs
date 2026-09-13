@@ -80,6 +80,13 @@ const api: CodexDesktopApi = {
     ipcRenderer.invoke("app:get-notification-preferences"),
   setNotificationPreferences: (preferences: NotificationPreferences) =>
     ipcRenderer.invoke("app:set-notification-preferences", preferences),
+  showTestNotification: () => ipcRenderer.invoke("app:test-notification"),
+  getMicrophonePermissionStatus: () =>
+    ipcRenderer.invoke("app:get-microphone-permission-status"),
+  requestMicrophonePermission: () =>
+    ipcRenderer.invoke("app:request-microphone-permission"),
+  openMicrophoneSettings: () =>
+    ipcRenderer.invoke("app:open-microphone-settings"),
   getTranscriptionStatus: () =>
     ipcRenderer.invoke("app:get-transcription-status"),
   setTranscriptionApiKey: (apiKey) =>

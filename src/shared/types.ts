@@ -137,6 +137,9 @@ export interface NotificationPreferences {
   attentionRequired: boolean;
 }
 
+export type MicrophonePermissionStatus =
+  "not-determined" | "granted" | "denied" | "restricted" | "unknown";
+
 export interface TranscriptionStatus {
   configured: boolean;
   source: "environment" | "keychain" | "none";
@@ -276,6 +279,10 @@ export interface CodexDesktopApi {
   setNotificationPreferences(
     preferences: NotificationPreferences,
   ): Promise<void>;
+  showTestNotification(): Promise<void>;
+  getMicrophonePermissionStatus(): Promise<MicrophonePermissionStatus>;
+  requestMicrophonePermission(): Promise<MicrophonePermissionStatus>;
+  openMicrophoneSettings(): Promise<void>;
   getTranscriptionStatus(): Promise<TranscriptionStatus>;
   setTranscriptionApiKey(apiKey: string): Promise<TranscriptionStatus>;
   transcribeAudio(audio: DictationAudio): Promise<string>;

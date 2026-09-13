@@ -6,6 +6,7 @@ import {
   nativeTheme,
   Notification,
   shell,
+  systemPreferences,
 } from "electron";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -13,6 +14,7 @@ import type {
   CodexSettings,
   ClipboardImageInput,
   DictationAudio,
+  MicrophonePermissionStatus,
   NotificationPreferences,
   StartTurnInput,
   SteerTurnInput,
@@ -70,6 +72,38 @@ function saveNotificationPreferences(value: NotificationPreferences): void {
   });
 }
 
+function microphonePermissionStatus(): MicrophonePermissionStatus {
+  return process.platform === "darwin"
+    ? systemPreferences.getMediaAccessStatus("microphone")
+    : "granted";
+}
+
+function showTestNotification(): Promise<void> {
+  if (!Notification.isSupported())
+    return Promise.reject(
+      new Error("Desktop notifications are not supported on this system."),
+    );
+  return new Promise((resolve, reject) => {
+    const notification = new Notification({
+      title: "Codex notifications are ready",
+      body: "Background completion and attention alerts are enabled.",
+    });
+    const timeout = setTimeout(
+      () => reject(new Error("macOS did not confirm notification delivery.")),
+      5_000,
+    );
+    notification.once("show", () => {
+      clearTimeout(timeout);
+      resolve();
+    });
+    notification.once("failed", (_event, error) => {
+      clearTimeout(timeout);
+      reject(new Error(`macOS could not display the notification: ${error}`));
+    });
+    notification.show();
+  });
+}
+
 function sendEvent(event: UiEvent): void {
   for (const window of windows)
     if (!window.isDestroyed()) window.webContents.send("codex:event", event);
@@ -83,6 +117,10 @@ function sendEvent(event: UiEvent): void {
   shownNotifications.add(spec.key);
   if (shownNotifications.size > 500) shownNotifications.clear();
   const notification = new Notification({ title: spec.title, body: spec.body });
+  notification.on("failed", (_event, error) => {
+    console.error(`Desktop notification failed: ${error}`);
+    app.dock?.bounce("informational");
+  });
   notification.on("click", () => {
     const target =
       mainWindow && !mainWindow.isDestroyed()
@@ -246,6 +284,22 @@ function registerIpc(): void {
     (_event, value: NotificationPreferences) =>
       saveNotificationPreferences(value),
   );
+  ipcMain.handle("app:test-notification", () => showTestNotification());
+  ipcMain.handle("app:get-microphone-permission-status", () =>
+    microphonePermissionStatus(),
+  );
+  ipcMain.handle("app:request-microphone-permission", async () => {
+    if (process.platform !== "darwin") return "granted";
+    const current = microphonePermissionStatus();
+    if (current !== "not-determined") return current;
+    const granted = await systemPreferences.askForMediaAccess("microphone");
+    return granted ? "granted" : microphonePermissionStatus();
+  });
+  ipcMain.handle("app:open-microphone-settings", () =>
+    shell.openExternal(
+      "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
+    ),
+  );
   ipcMain.handle("app:get-transcription-status", () =>
     transcriptionService?.status(),
   );
@@ -306,6 +360,13 @@ function createWindow(initialThreadId?: string): BrowserWindow {
         details.mediaTypes?.includes("audio");
       callback(allowMicrophone === true);
     },
+  );
+  window.webContents.session.setPermissionCheckHandler(
+    (webContents, permission, _origin, details) =>
+      webContents !== null &&
+      [...windows].some((candidate) => candidate.webContents === webContents) &&
+      permission === "media" &&
+      details.mediaType === "audio",
   );
 
   if (process.env.ELECTRON_RENDERER_URL) {

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type {
   CodexDiagnostics,
+  MicrophonePermissionStatus,
   NotificationPreferences,
   PendingInteraction,
   ThemeMode,
@@ -9,6 +10,7 @@ import type {
   ThreadSummary,
   TranscriptionStatus,
 } from "../../shared/types";
+import { readableError } from "./errors";
 
 export function InteractionDialog({
   interaction,
@@ -375,16 +377,24 @@ export function SettingsDialog({
   notifications,
   transcription,
   theme,
+  microphonePermission,
   onClose,
   onThemeChange,
+  onRequestMicrophonePermission,
+  onOpenMicrophoneSettings,
+  onTestNotification,
   onNotificationsChange,
   onApiKeyChange,
 }: {
   notifications: NotificationPreferences;
   transcription: TranscriptionStatus;
   theme: ThemeMode;
+  microphonePermission: MicrophonePermissionStatus;
   onClose: () => void;
   onThemeChange: (theme: ThemeMode) => void;
+  onRequestMicrophonePermission: () => Promise<MicrophonePermissionStatus>;
+  onOpenMicrophoneSettings: () => Promise<void>;
+  onTestNotification: () => Promise<void>;
   onNotificationsChange: (
     preferences: NotificationPreferences,
   ) => Promise<void>;
@@ -395,6 +405,10 @@ export function SettingsDialog({
   const [apiKey, setApiKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [permission, setPermission] = useState(microphonePermission);
+  const [permissionBusy, setPermissionBusy] = useState(false);
+  const [notificationMessage, setNotificationMessage] = useState("");
+  const [notificationBusy, setNotificationBusy] = useState(false);
 
   const savePreferences = async (
     next: NotificationPreferences,
@@ -416,6 +430,39 @@ export function SettingsDialog({
       setMessage(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const requestMicrophone = async (): Promise<void> => {
+    setPermissionBusy(true);
+    setMessage("");
+    try {
+      const next = await onRequestMicrophonePermission();
+      setPermission(next);
+      setMessage(
+        next === "granted"
+          ? "Microphone access granted."
+          : next === "denied"
+            ? "Microphone access is denied. Enable it in macOS Settings, then restart the app."
+            : `Microphone access is ${next}.`,
+      );
+    } catch (cause) {
+      setMessage(readableError(cause));
+    } finally {
+      setPermissionBusy(false);
+    }
+  };
+
+  const testNotification = async (): Promise<void> => {
+    setNotificationBusy(true);
+    setNotificationMessage("");
+    try {
+      await onTestNotification();
+      setNotificationMessage("Test notification sent.");
+    } catch (cause) {
+      setNotificationMessage(readableError(cause));
+    } finally {
+      setNotificationBusy(false);
     }
   };
 
@@ -447,6 +494,10 @@ export function SettingsDialog({
         </div>
         <div className="settings-section">
           <strong>Notifications</strong>
+          <p className="modal-detail">
+            System alerts are sent while the app is not focused. Test delivery
+            here before relying on them.
+          </p>
           <label className="settings-check">
             <input
               type="checkbox"
@@ -473,6 +524,18 @@ export function SettingsDialog({
             />
             Notify when Codex needs approval or input
           </label>
+          <div className="settings-inline-actions">
+            <button
+              className="ghost-button"
+              disabled={notificationBusy}
+              onClick={() => void testNotification()}
+            >
+              {notificationBusy ? "Testing…" : "Send test notification"}
+            </button>
+          </div>
+          {notificationMessage ? (
+            <p className="settings-status">{notificationMessage}</p>
+          ) : null}
         </div>
         <div className="settings-section">
           <strong>Microphone dictation</strong>
@@ -480,6 +543,31 @@ export function SettingsDialog({
             Recordings are sent to the OpenAI Audio API using {status.model}.
             API usage is billed separately from your Codex subscription.
           </p>
+          <p className="settings-status">
+            Microphone permission: {permission.replace("-", " ")}.
+          </p>
+          <div className="settings-inline-actions">
+            {permission === "denied" || permission === "restricted" ? (
+              <button
+                className="ghost-button"
+                onClick={() => void onOpenMicrophoneSettings()}
+              >
+                Open Microphone Settings
+              </button>
+            ) : (
+              <button
+                className="ghost-button"
+                disabled={permissionBusy || permission === "granted"}
+                onClick={() => void requestMicrophone()}
+              >
+                {permissionBusy
+                  ? "Requesting…"
+                  : permission === "granted"
+                    ? "Microphone allowed"
+                    : "Allow microphone"}
+              </button>
+            )}
+          </div>
           <p className="settings-status">
             {status.configured
               ? `Configured via ${status.source === "environment" ? "OPENAI_API_KEY" : "macOS Keychain"}.`

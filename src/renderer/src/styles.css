@@ -1847,6 +1847,11 @@ button {
   display: flex;
   gap: 8px;
 }
+.settings-inline-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .settings-status,
 .settings-error {
   margin: 0;
