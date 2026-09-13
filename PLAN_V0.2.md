@@ -2,7 +2,7 @@
 
 ## Status
 
-- Release version: `0.2.4`
+- Release version: `0.2.5`
 - Current development: Intel DMG and ZIP packaged; manual packaged-app validation remains pending.
 - Planning status: P0 implemented; manual packaged-app validation pending
 - Baseline: the `0.1.1` MVP launches Codex correctly from a packaged Intel macOS app, loads persisted threads, streams conversations, supports approvals and user questions, and provides system/light/dark themes.
