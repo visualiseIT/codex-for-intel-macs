@@ -2,7 +2,7 @@
 
 ## Status
 
-- Target release: `0.2.0`
+- Current patch release: `0.2.1`
 - Planning status: P0 implemented; manual packaged-app validation pending
 - Baseline: the `0.1.1` MVP launches Codex correctly from a packaged Intel macOS app, loads persisted threads, streams conversations, supports approvals and user questions, and provides system/light/dark themes.
 - First real chat through the custom desktop UI confirmed on 11 September 2026.
@@ -218,7 +218,7 @@ Version 0.2 is ready when:
 - The automated check suite and app-server smoke test pass.
 - The manual Intel macOS checklist passes on the packaged x64 application.
 - `README.md`, screenshots, version metadata, and release notes describe the shipped behavior accurately.
-- Git status is clean and the release is represented by descriptive commits and a `v0.2.0` tag.
+- Git status is clean and the release is represented by descriptive commits and a matching version tag.
 
 ## Suggested implementation sequence
 

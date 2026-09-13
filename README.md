@@ -58,10 +58,13 @@ This runs ESLint, TypeScript, unit tests, and a production build.
 ## Package for an Intel Mac
 
 ```bash
+# Bump the patch version in package.json and package-lock.json first.
 npm run package:mac:x64
 ```
 
 Unsigned `.dmg` and `.zip` artifacts are written to `release/`. macOS may require you to right-click and choose **Open** for a locally built, unsigned application. Code signing, notarization, and auto-update are intentionally outside the MVP.
+
+Every distributable rebuild must use a new version number so artifacts and installed builds are unambiguous; never overwrite a previously packaged version.
 
 ## Security model
 
