@@ -185,6 +185,7 @@ export class CodexService extends EventEmitter {
   private readonly legacyLineage = loadLegacyLineage(
     join(process.env.CODEX_HOME || join(homedir(), ".codex"), "sessions"),
   );
+  private readonly runtimeLineage = new Map<string, string>();
   private state: ConnectionState = "disconnected";
   private stateMessage: string | undefined;
 
@@ -267,7 +268,10 @@ export class CodexService extends EventEmitter {
               ? thread
               : {
                   ...thread,
-                  forkedFromId: legacyLineage.get(thread.id) ?? null,
+                  forkedFromId:
+                    this.runtimeLineage.get(thread.id) ??
+                    legacyLineage.get(thread.id) ??
+                    null,
                 };
           })
         : [],
@@ -324,7 +328,10 @@ export class CodexService extends EventEmitter {
         ? thread
         : {
             ...thread,
-            forkedFromId: legacyLineage.get(thread.id) ?? null,
+            forkedFromId:
+              this.runtimeLineage.get(thread.id) ??
+              legacyLineage.get(thread.id) ??
+              null,
           },
       items: page.items,
       nextCursor: page.nextCursor,
@@ -367,7 +374,10 @@ export class CodexService extends EventEmitter {
           ? thread
           : {
               ...thread,
-              forkedFromId: legacyLineage.get(thread.id) ?? null,
+              forkedFromId:
+                this.runtimeLineage.get(thread.id) ??
+                legacyLineage.get(thread.id) ??
+                null,
             },
       ];
     });
@@ -411,7 +421,9 @@ export class CodexService extends EventEmitter {
       deferGoalContinuation: true,
       threadSource: "codex-desktop-intel",
     });
-    return normalizeThread(result.thread);
+    const forked = normalizeThread(result.thread);
+    this.runtimeLineage.set(forked.id, forked.forkedFromId ?? threadId);
+    return { ...forked, forkedFromId: forked.forkedFromId ?? threadId };
   }
 
   async compactThread(threadId: string): Promise<void> {

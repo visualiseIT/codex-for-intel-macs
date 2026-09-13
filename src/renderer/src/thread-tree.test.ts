@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ThreadSummary } from "../../shared/types";
-import { buildThreadProjects } from "./thread-tree";
+import { buildThreadProjects, mergeThreadSummaries } from "./thread-tree";
 
 function thread(
   id: string,
@@ -22,6 +22,13 @@ function thread(
 }
 
 describe("buildThreadProjects", () => {
+  it("merges a newly returned fork into a stale thread listing", () => {
+    const parent = thread("parent");
+    const child = thread("child", { forkedFromId: "parent" });
+
+    expect(mergeThreadSummaries([parent], [child])).toEqual([parent, child]);
+  });
+
   it("groups projects and nests forks under their parents", () => {
     const parent = thread("parent", { updatedAt: 10 });
     const child = thread("child", { forkedFromId: "parent", updatedAt: 20 });

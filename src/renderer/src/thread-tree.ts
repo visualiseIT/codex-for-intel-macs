@@ -16,6 +16,15 @@ export interface ThreadProjectGroup {
   roots: ThreadTreeNode[];
 }
 
+export function mergeThreadSummaries(
+  threads: ThreadSummary[],
+  additions: ThreadSummary[],
+): ThreadSummary[] {
+  const merged = new Map(threads.map((thread) => [thread.id, thread]));
+  additions.forEach((thread) => merged.set(thread.id, thread));
+  return [...merged.values()];
+}
+
 function normalizedPath(path: string): string {
   return path.replace(/\/+$/, "") || path;
 }

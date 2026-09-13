@@ -41,7 +41,7 @@ import { prependHistoryItems } from "./history";
 import { RichText } from "./RichText";
 import { isNearBottom, previousPromptOffset } from "./scroll";
 import { ThreadSidebar } from "./ThreadSidebar";
-import { buildThreadProjects } from "./thread-tree";
+import { buildThreadProjects, mergeThreadSummaries } from "./thread-tree";
 
 const LAST_WORKSPACE_KEY = "codex-desktop:last-workspace";
 const THEME_KEY = "codex-desktop:theme";
@@ -298,6 +298,7 @@ export function App(): React.JSX.Element {
   const stickToBottomRef = useRef(true);
   const endRef = useRef<HTMLDivElement | null>(null);
   const requestedParentIdsRef = useRef(new Set<string>());
+  const pendingSidebarThreadsRef = useRef(new Map<string, ThreadSummary>());
 
   const selectedModel = models.find((model) => model.id === settings.model);
   const effortOptions = selectedModel?.efforts.length
@@ -334,8 +335,19 @@ export function App(): React.JSX.Element {
           ...(term ? { searchTerm: term } : {}),
           archived: showArchived,
         });
-        setThreads(page.threads);
+        for (const thread of page.threads)
+          pendingSidebarThreadsRef.current.delete(thread.id);
+        const pendingThreads =
+          term || showArchived
+            ? []
+            : [...pendingSidebarThreadsRef.current.values()];
+        const visibleThreads = mergeThreadSummaries(
+          page.threads,
+          pendingThreads,
+        );
+        setThreads(visibleThreads);
         rememberThreads(page.threads);
+        rememberThreads(pendingThreads);
         setNextCursor(page.nextCursor);
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
@@ -981,9 +993,13 @@ export function App(): React.JSX.Element {
     setError("");
     try {
       const forked = await window.codex.forkThread(thread.id, lastTurnId);
-      await refreshThreads(search, false);
+      pendingSidebarThreadsRef.current.set(forked.id, forked);
+      setThreads((current) => mergeThreadSummaries(current, [forked]));
+      rememberThreads([thread, forked]);
       setThreadView("active");
+      setSearch("");
       await openThread(forked);
+      void refreshThreads("", false);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
