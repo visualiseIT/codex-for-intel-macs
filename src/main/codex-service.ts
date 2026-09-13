@@ -16,6 +16,7 @@ import type {
   SteerTurnInput,
   ThreadGoal,
   ThreadGoalStatus,
+  ThreadHistoryPage,
   ThreadListInput,
   ThreadPage,
   ThreadSummary,
@@ -123,6 +124,16 @@ function normalizeQueuedPrompt(value: unknown): QueuedPrompt {
     id: string(queued.id),
     text: texts.join("\n"),
     imageCount,
+  };
+}
+
+async function normalizeHistoryPage(
+  value: unknown,
+): Promise<ThreadHistoryPage> {
+  const page = record(value);
+  return {
+    items: await Promise.all(normalizeTurns(page.data).map(hydrateItemImages)),
+    nextCursor: string(page.nextCursor) || null,
   };
 }
 
@@ -300,15 +311,12 @@ export class CodexService extends EventEmitter {
       threadId,
       excludeTurns: true,
       initialTurnsPage: {
-        limit: 100,
+        limit: 12,
         sortDirection: "desc",
         itemsView: "full",
       },
     });
-    const page = record(result.initialTurnsPage);
-    const items = await Promise.all(
-      normalizeTurns(page.data).map(hydrateItemImages),
-    );
+    const page = await normalizeHistoryPage(result.initialTurnsPage);
     const thread = normalizeThread(result.thread);
     const legacyLineage = await this.legacyLineage;
     return {
@@ -318,8 +326,26 @@ export class CodexService extends EventEmitter {
             ...thread,
             forkedFromId: legacyLineage.get(thread.id) ?? null,
           },
-      items,
+      items: page.items,
+      nextCursor: page.nextCursor,
     };
+  }
+
+  async loadEarlierThreadTurns(
+    threadId: string,
+    cursor: string,
+  ): Promise<ThreadHistoryPage> {
+    const result = await this.process.request<UnknownRecord>(
+      "thread/turns/list",
+      {
+        threadId,
+        cursor,
+        limit: 20,
+        sortDirection: "desc",
+        itemsView: "full",
+      },
+    );
+    return normalizeHistoryPage(result);
   }
 
   async getThreadSummaries(threadIds: string[]): Promise<ThreadSummary[]> {

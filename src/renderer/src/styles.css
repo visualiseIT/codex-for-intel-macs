@@ -1286,10 +1286,20 @@ button {
 .thread-row-wrap.selected {
   background: #d4d0c5;
 }
+.thread-row-wrap.starred {
+  background: #ece4d5;
+  box-shadow: inset 2px 0 #b39362;
+}
+.thread-row-wrap.starred:hover {
+  background: #e5dccb;
+}
+.thread-row-wrap.starred.selected {
+  background: #d8cfbd;
+}
 .thread-row-wrap .thread-row {
   min-width: 0;
   margin: 0;
-  padding-right: 31px;
+  padding-right: 57px;
   padding-left: calc(10px + var(--thread-depth, 0) * 13px);
 }
 .thread-row-wrap.context-only {
@@ -1331,6 +1341,28 @@ button {
   font-size: 10px;
   opacity: 0;
 }
+.thread-star {
+  position: absolute;
+  top: 7px;
+  right: 31px;
+  width: 26px;
+  height: 27px;
+  border: 0;
+  border-radius: 6px;
+  color: #9a7d52;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  opacity: 0.48;
+}
+.thread-row-wrap:hover .thread-star,
+.thread-row-wrap:focus-within .thread-star,
+.thread-row-wrap.starred .thread-star {
+  opacity: 1;
+}
+.thread-star:hover {
+  background: #c9c5ba;
+}
 .thread-row-wrap:hover .thread-more,
 .thread-row-wrap:focus-within .thread-more {
   opacity: 1;
@@ -1338,10 +1370,23 @@ button {
 .thread-more:hover {
   background: #c9c5ba;
 }
-.pin-mark {
-  margin-right: 6px;
-  color: #9a7d52;
-  font-size: 8px;
+.history-loader {
+  display: flex;
+  justify-content: center;
+  padding: 12px 16px 0;
+}
+.history-loader button {
+  padding: 5px 11px;
+  border: 1px solid #d2cdc2;
+  border-radius: 999px;
+  color: #777167;
+  background: #f3f0e9;
+  cursor: pointer;
+  font-size: 9.5px;
+}
+.history-loader button:disabled {
+  cursor: wait;
+  opacity: 0.65;
 }
 .load-more {
   display: block;
@@ -1894,11 +1939,30 @@ button {
 :root[data-theme="dark"] .thread-row-wrap.selected {
   background: #35362f;
 }
+:root[data-theme="dark"] .thread-row-wrap.starred {
+  background: #302c24;
+  box-shadow: inset 2px 0 #9b7a4e;
+}
+:root[data-theme="dark"] .thread-row-wrap.starred:hover {
+  background: #393329;
+}
+:root[data-theme="dark"] .thread-row-wrap.starred.selected {
+  background: #40392d;
+}
+:root[data-theme="dark"] .thread-star {
+  color: #c7a76e;
+}
 :root[data-theme="dark"] .thread-more {
   color: #aaa99f;
 }
 :root[data-theme="dark"] .thread-more:hover {
   background: #44453e;
+}
+:root[data-theme="dark"] .thread-star:hover,
+:root[data-theme="dark"] .history-loader button {
+  border-color: #41433a;
+  color: #bbb7aa;
+  background: #292a25;
 }
 :root[data-theme="dark"] .project-header {
   color: #99958a;

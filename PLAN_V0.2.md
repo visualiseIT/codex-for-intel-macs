@@ -50,13 +50,14 @@ Turn the functional MVP into a comfortable daily-driver desktop client. Version 
 ### Thread management
 
 - [x] Rename threads through `thread/name/set`.
-- [x] Pin and unpin threads locally; migrate to `thread/metadata/update` when the installed CLI schema exposes pin metadata.
-- [x] Sort pinned threads above recent threads.
+- [x] Star and unstar threads locally with a persistent highlighted sidebar state; migrate to `thread/metadata/update` when the installed CLI schema exposes pin metadata.
+- [x] Sort starred threads above recent threads.
 - [x] Archive threads through `thread/archive`.
 - [x] Add an archived-thread view and restore with `thread/unarchive`.
 - [x] Permanently delete threads through `thread/delete` only after a clear destructive confirmation.
 - [x] React to name, archive, unarchive, and delete notifications without requiring an app restart.
 - [x] Add cursor-based thread pagination beyond the previous 100-thread limit.
+- [x] Open conversations from the newest 12 turns and load older turn pages when scrolling upward.
 - [x] Preserve search and selection correctly while pages or filters change.
 
 ### Image and file context
@@ -216,7 +217,7 @@ Turn the functional MVP into a comfortable daily-driver desktop client. Version 
 - [ ] Stop an active turn and confirm the final state is interrupted.
 - [ ] Verify Read only, Workspace write, and Full access labels and behavior.
 - [ ] Test Markdown, code copying, a large diff, and long command output.
-- [ ] Rename, pin, archive, restore, and permanently delete disposable threads.
+- [ ] Rename, star, archive, restore, and permanently delete disposable threads.
 - [ ] Load more than 100 threads and verify search and selection.
 - [ ] Paste, drag, select, preview, send, and remove supported images.
 - [ ] Disconnect/restart Codex and verify recovery without losing the active thread.

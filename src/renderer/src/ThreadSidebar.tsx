@@ -22,6 +22,7 @@ function TreeRow({
   selectedThreadId,
   pinnedThreads,
   onOpen,
+  onToggleStar,
   onManage,
 }: {
   node: ThreadTreeNode;
@@ -29,6 +30,7 @@ function TreeRow({
   selectedThreadId: string | null;
   pinnedThreads: Set<string>;
   onOpen: (thread: ThreadSummary) => void;
+  onToggleStar: (thread: ThreadSummary) => void;
   onManage: (thread: ThreadSummary) => void;
 }): React.JSX.Element {
   const forkDescription = node.parent
@@ -41,16 +43,13 @@ function TreeRow({
   return (
     <>
       <div
-        className={`thread-row-wrap ${selectedThreadId === node.thread.id ? "selected" : ""} ${node.contextOnly ? "context-only" : ""}`}
+        className={`thread-row-wrap ${selectedThreadId === node.thread.id ? "selected" : ""} ${pinnedThreads.has(node.thread.id) ? "starred" : ""} ${node.contextOnly ? "context-only" : ""}`}
         style={{ "--thread-depth": Math.min(depth, 4) } as React.CSSProperties}
         title={forkDescription}
       >
         <button className="thread-row" onClick={() => onOpen(node.thread)}>
           <span className="thread-title">
             {depth ? <span className="fork-branch">↳</span> : null}
-            {pinnedThreads.has(node.thread.id) ? (
-              <span className="pin-mark">◆</span>
-            ) : null}
             {node.thread.title}
             {node.children.length ? (
               <span className="fork-count">{node.children.length}</span>
@@ -62,6 +61,18 @@ function TreeRow({
             </span>
             <time>{formatDate(node.thread.updatedAt)}</time>
           </span>
+        </button>
+        <button
+          className="thread-star"
+          onClick={() => onToggleStar(node.thread)}
+          aria-label={`${pinnedThreads.has(node.thread.id) ? "Remove star from" : "Star"} ${node.thread.title}`}
+          title={
+            pinnedThreads.has(node.thread.id)
+              ? "Remove star"
+              : "Star conversation"
+          }
+        >
+          {pinnedThreads.has(node.thread.id) ? "★" : "☆"}
         </button>
         <button
           className="thread-more"
@@ -79,6 +90,7 @@ function TreeRow({
           selectedThreadId={selectedThreadId}
           pinnedThreads={pinnedThreads}
           onOpen={onOpen}
+          onToggleStar={onToggleStar}
           onManage={onManage}
         />
       ))}
@@ -93,6 +105,7 @@ export function ThreadSidebar({
   pinnedThreads,
   onToggleProject,
   onOpen,
+  onToggleStar,
   onManage,
 }: {
   groups: ThreadProjectGroup[];
@@ -101,6 +114,7 @@ export function ThreadSidebar({
   pinnedThreads: Set<string>;
   onToggleProject: (key: string) => void;
   onOpen: (thread: ThreadSummary) => void;
+  onToggleStar: (thread: ThreadSummary) => void;
   onManage: (thread: ThreadSummary) => void;
 }): React.JSX.Element {
   return (
@@ -128,6 +142,7 @@ export function ThreadSidebar({
                     selectedThreadId={selectedThreadId}
                     pinnedThreads={pinnedThreads}
                     onOpen={onOpen}
+                    onToggleStar={onToggleStar}
                     onManage={onManage}
                   />
                 ))

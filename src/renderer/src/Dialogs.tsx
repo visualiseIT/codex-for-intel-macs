@@ -214,7 +214,9 @@ export function ThreadActionsDialog({
           <button onClick={onOpenInNewWindow}>Open in new window</button>
           {!archived ? <button onClick={onRename}>Rename</button> : null}
           {!archived ? (
-            <button onClick={onPin}>{pinned ? "Unpin" : "Pin to top"}</button>
+            <button onClick={onPin}>
+              {pinned ? "Remove star" : "Star conversation"}
+            </button>
           ) : null}
           {archived ? (
             <button onClick={onRestore}>Restore conversation</button>

@@ -1,4 +1,12 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type {
   ChatItem,
   CodexDiagnostics,
@@ -29,6 +37,7 @@ import {
 } from "./Dialogs";
 import { DiffView } from "./DiffView";
 import { readableError } from "./errors";
+import { prependHistoryItems } from "./history";
 import { RichText } from "./RichText";
 import { isNearBottom, previousPromptOffset } from "./scroll";
 import { ThreadSidebar } from "./ThreadSidebar";
@@ -234,6 +243,8 @@ export function App(): React.JSX.Element {
     null,
   );
   const [items, setItems] = useState<ChatItem[]>([]);
+  const [olderTurnsCursor, setOlderTurnsCursor] = useState<string | null>(null);
+  const [loadingOlderTurns, setLoadingOlderTurns] = useState(false);
   const [settings, setSettings] = useState<CodexSettings>(defaultSettings);
   const [theme, setTheme] = useState<ThemeMode>(initialTheme);
   const [search, setSearch] = useState("");
@@ -278,6 +289,12 @@ export function App(): React.JSX.Element {
   const recordingStreamRef = useRef<MediaStream | null>(null);
   const recordingChunksRef = useRef<Blob[]>([]);
   const recordingStartedAtRef = useRef(0);
+  const loadingOlderTurnsRef = useRef(false);
+  const historyPagingEnabledRef = useRef(false);
+  const pendingScrollRestoreRef = useRef<{
+    scrollHeight: number;
+    scrollTop: number;
+  } | null>(null);
   const stickToBottomRef = useRef(true);
   const endRef = useRef<HTMLDivElement | null>(null);
   const requestedParentIdsRef = useRef(new Set<string>());
@@ -381,8 +398,10 @@ export function App(): React.JSX.Element {
 
   const clearConversation = useCallback(() => {
     activeThreadRef.current = null;
+    historyPagingEnabledRef.current = false;
     setSelectedThread(null);
     setItems([]);
+    setOlderTurnsCursor(null);
     setActiveTurnId(null);
     setRunning(false);
     setQueuedPrompts([]);
@@ -572,6 +591,48 @@ export function App(): React.JSX.Element {
       endRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
   }, [items]);
 
+  useLayoutEffect(() => {
+    const pending = pendingScrollRestoreRef.current;
+    const conversation = conversationRef.current;
+    if (!pending || !conversation) return;
+    conversation.scrollTop =
+      pending.scrollTop + conversation.scrollHeight - pending.scrollHeight;
+    pendingScrollRestoreRef.current = null;
+  }, [items]);
+
+  const enableHistoryPaging = useCallback((threadId: string): void => {
+    window.requestAnimationFrame(() => {
+      if (activeThreadRef.current !== threadId) return;
+      endRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+      historyPagingEnabledRef.current = true;
+    });
+  }, []);
+
+  const loadEarlierTurns = async (): Promise<void> => {
+    const threadId = activeThreadRef.current;
+    const cursor = olderTurnsCursor;
+    if (!threadId || !cursor || loadingOlderTurnsRef.current) return;
+    loadingOlderTurnsRef.current = true;
+    setLoadingOlderTurns(true);
+    try {
+      const page = await window.codex.loadEarlierThreadTurns(threadId, cursor);
+      if (activeThreadRef.current !== threadId) return;
+      const conversation = conversationRef.current;
+      if (conversation)
+        pendingScrollRestoreRef.current = {
+          scrollHeight: conversation.scrollHeight,
+          scrollTop: conversation.scrollTop,
+        };
+      setItems((current) => prependHistoryItems(current, page.items));
+      setOlderTurnsCursor(page.nextCursor);
+    } catch (cause) {
+      setError(readableError(cause));
+    } finally {
+      loadingOlderTurnsRef.current = false;
+      setLoadingOlderTurns(false);
+    }
+  };
+
   const openThread = async (thread: ThreadSummary): Promise<void> => {
     if (archived) {
       setThreadMenu(thread);
@@ -579,6 +640,9 @@ export function App(): React.JSX.Element {
     }
     setLoadingThread(true);
     setError("");
+    activeThreadRef.current = null;
+    historyPagingEnabledRef.current = false;
+    setOlderTurnsCursor(null);
     stickToBottomRef.current = true;
     setShowJumpToLatest(false);
     try {
@@ -587,6 +651,8 @@ export function App(): React.JSX.Element {
       setSelectedThread(result.thread);
       rememberThreads([result.thread]);
       setItems(result.items);
+      setOlderTurnsCursor(result.nextCursor);
+      enableHistoryPaging(result.thread.id);
       void loadQueuedPrompts(result.thread.id);
       void loadGoal(result.thread.id);
       setSettings((current) => ({
@@ -608,10 +674,13 @@ export function App(): React.JSX.Element {
     void window.codex
       .openThread(pendingThreadFocus)
       .then((result) => {
+        historyPagingEnabledRef.current = false;
         activeThreadRef.current = result.thread.id;
         setSelectedThread(result.thread);
         rememberThreads([result.thread]);
         setItems(result.items);
+        setOlderTurnsCursor(result.nextCursor);
+        enableHistoryPaging(result.thread.id);
         setThreadView("active");
         setSettings((current) => ({
           ...current,
@@ -627,6 +696,7 @@ export function App(): React.JSX.Element {
       .finally(() => setPendingThreadFocus(null));
   }, [
     connection,
+    enableHistoryPaging,
     loadGoal,
     loadQueuedPrompts,
     pendingThreadFocus,
@@ -1112,6 +1182,14 @@ export function App(): React.JSX.Element {
     setThreadMenu(null);
   };
 
+  const toggleStar = (thread: ThreadSummary): void => {
+    const next = new Set(pinnedThreads);
+    if (next.has(thread.id)) next.delete(thread.id);
+    else next.add(thread.id);
+    setPinnedThreads(next);
+    localStorage.setItem(PINNED_THREADS_KEY, JSON.stringify([...next]));
+  };
+
   const deleteThread = (): void => {
     if (!threadMenu) return;
     if (
@@ -1237,6 +1315,7 @@ export function App(): React.JSX.Element {
             pinnedThreads={pinnedThreads}
             onToggleProject={toggleProject}
             onOpen={(thread) => void openThread(thread)}
+            onToggleStar={toggleStar}
             onManage={setThreadMenu}
           />
           {!threads.length && connection === "connected" ? (
@@ -1398,8 +1477,22 @@ export function App(): React.JSX.Element {
             );
             stickToBottomRef.current = nearBottom;
             setShowJumpToLatest(!nearBottom);
+            if (historyPagingEnabledRef.current && element.scrollTop <= 80)
+              void loadEarlierTurns();
           }}
         >
+          {!loadingThread && selectedThread && olderTurnsCursor ? (
+            <div className="history-loader">
+              <button
+                disabled={loadingOlderTurns}
+                onClick={() => void loadEarlierTurns()}
+              >
+                {loadingOlderTurns
+                  ? "Loading earlier messages…"
+                  : "Load earlier messages"}
+              </button>
+            </div>
+          ) : null}
           {loadingThread ? (
             <div className="center-state">
               <span className="spinner" /> Loading conversation…

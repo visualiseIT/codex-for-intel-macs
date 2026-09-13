@@ -193,6 +193,11 @@ function registerIpc(): void {
   ipcMain.handle("codex:open-thread", (_event, threadId: string) =>
     service.openThread(threadId),
   );
+  ipcMain.handle(
+    "codex:load-earlier-thread-turns",
+    (_event, threadId: string, cursor: string) =>
+      service.loadEarlierThreadTurns(threadId, cursor),
+  );
   ipcMain.handle("codex:get-thread-summaries", (_event, threadIds: string[]) =>
     service.getThreadSummaries(threadIds),
   );

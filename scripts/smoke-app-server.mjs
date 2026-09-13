@@ -13,6 +13,8 @@ let threadCount = 0;
 let archivedCount = 0;
 let modelCount = 0;
 let usageAvailable = false;
+let firstThreadId = "";
+let paginatedTurnCount = 0;
 
 function send(message) {
   child.stdin.write(`${JSON.stringify(message)}\n`);
@@ -28,7 +30,7 @@ function finish(error) {
     process.exitCode = 1;
   } else {
     console.log(
-      `App-server smoke test passed; ${threadCount} active thread(s), ${archivedCount} archived thread(s), ${modelCount} model(s), usage ${usageAvailable ? "available" : "unavailable"}.`,
+      `App-server smoke test passed; ${threadCount} active thread(s), ${archivedCount} archived thread(s), ${modelCount} model(s), ${paginatedTurnCount} paginated turn(s), usage ${usageAvailable ? "available" : "unavailable"}.`,
     );
   }
 }
@@ -80,9 +82,11 @@ child.stdout.on("data", (chunk) => {
       return;
     }
     if (message.id === 2) {
-      threadCount = Array.isArray(message.result?.data)
-        ? message.result.data.length
-        : 0;
+      const threads = Array.isArray(message.result?.data)
+        ? message.result.data
+        : [];
+      threadCount = threads.length;
+      firstThreadId = threads[0]?.id || "";
       send({
         method: "model/list",
         id: 3,
@@ -112,6 +116,29 @@ child.stdout.on("data", (chunk) => {
     }
     if (message.id === 5) {
       usageAvailable = !message.error && Boolean(message.result?.rateLimits);
+      if (!firstThreadId) {
+        finish(null);
+        return;
+      }
+      send({
+        method: "thread/turns/list",
+        id: 6,
+        params: {
+          threadId: firstThreadId,
+          limit: 2,
+          sortDirection: "desc",
+          itemsView: "full",
+        },
+      });
+    }
+    if (message.id === 6) {
+      if (message.error) {
+        finish(new Error(message.error.message || "Turn pagination failed"));
+        return;
+      }
+      paginatedTurnCount = Array.isArray(message.result?.data)
+        ? message.result.data.length
+        : 0;
       finish(null);
     }
   }

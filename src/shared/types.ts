@@ -91,6 +91,12 @@ export interface ClipboardImageInput {
 export interface OpenThreadResult {
   thread: ThreadSummary;
   items: ChatItem[];
+  nextCursor: string | null;
+}
+
+export interface ThreadHistoryPage {
+  items: ChatItem[];
+  nextCursor: string | null;
 }
 
 export interface StartTurnInput extends CodexSettings {
@@ -251,6 +257,10 @@ export interface CodexDesktopApi {
   listThreads(input?: ThreadListInput): Promise<ThreadPage>;
   listModels(): Promise<ModelOption[]>;
   openThread(threadId: string): Promise<OpenThreadResult>;
+  loadEarlierThreadTurns(
+    threadId: string,
+    cursor: string,
+  ): Promise<ThreadHistoryPage>;
   getThreadSummaries(threadIds: string[]): Promise<ThreadSummary[]>;
   openThreadInNewWindow(threadId: string): Promise<void>;
   createThread(settings: CodexSettings): Promise<ThreadSummary>;

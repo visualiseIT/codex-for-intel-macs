@@ -13,7 +13,8 @@ A small local macOS desktop client for the Codex CLI, designed to be packaged fo
 - Model, reasoning-effort, and sandbox selection.
 - Persistent system, light, and dark appearance modes.
 - GitHub-flavored Markdown, syntax-highlighted code, copy buttons, and unified diff views.
-- Thread rename, local pinning, archive/restore, permanent deletion, and cursor pagination.
+- Thread rename, local starring, archive/restore, permanent deletion, and cursor pagination.
+- Fast conversation opening with the newest 12 turns first and older history loaded as you scroll upward.
 - Image selection, drag-and-drop, native clipboard screenshots, polished previews, and model capability checks.
 - User-message image thumbnails remain visible when reopening conversation history.
 - Safe workspace-relative references when non-image files are dropped into the composer.
@@ -33,7 +34,7 @@ A small local macOS desktop client for the Codex CLI, designed to be packaged fo
 - Push-to-record microphone dictation using OpenAI's `gpt-transcribe` service.
 - Conservative defaults: workspace-write access, no sandbox network access, and on-request approvals.
 
-Codex remains the source of truth for thread history and authentication. The app only remembers UI preferences such as the selected workspace, theme, and locally pinned thread IDs. Clipboard screenshots—which have no source file—are stored in the app's private data directory so Codex can receive them and history can display them later. Pinning is local in this release because the installed Codex CLI schema does not yet expose server-side pin metadata.
+Codex remains the source of truth for thread history and authentication. The app only remembers UI preferences such as the selected workspace, theme, and locally starred thread IDs. Clipboard screenshots—which have no source file—are stored in the app's private data directory so Codex can receive them and history can display them later. Starring is local in this release because the installed Codex CLI schema does not yet expose server-side pin metadata.
 
 ## Requirements
 
@@ -86,8 +87,8 @@ Every distributable rebuild must use a new version number so artifacts and insta
 
 ## Known limitations
 
-- Turn history is limited to the newest 100 entries; older-turn pagination remains deferred.
-- Thread pins are a local UI preference until the installed Codex CLI exposes persisted pin metadata.
+- Conversation history loads in turn-sized pages; unusually large individual turns can still take longer to render.
+- Thread stars are a local UI preference until the installed Codex CLI exposes persisted pin metadata.
 - App-server supports native text and image inputs. Other dropped files are inserted as safe workspace-relative prompt references.
 - Dedicated review mode remains deferred by request.
 - Remote app-server connections remain deferred while WebSocket transport is experimental.
