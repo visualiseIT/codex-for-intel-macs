@@ -2,8 +2,8 @@
 
 ## Status
 
-- Last packaged release: `0.2.1`
-- Current development: post-`0.2.1`; assign the next patch version only immediately before an explicitly approved distributable rebuild.
+- Release version: `0.2.2`
+- Current development: Intel DMG and ZIP packaged; manual packaged-app validation remains pending.
 - Planning status: P0 implemented; manual packaged-app validation pending
 - Baseline: the `0.1.1` MVP launches Codex correctly from a packaged Intel macOS app, loads persisted threads, streams conversations, supports approvals and user questions, and provides system/light/dark themes.
 - First real chat through the custom desktop UI confirmed on 11 September 2026.
