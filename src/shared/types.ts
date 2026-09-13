@@ -146,6 +146,7 @@ export interface TranscriptionStatus {
 export interface DictationAudio {
   bytes: Uint8Array;
   mimeType: string;
+  durationMs: number;
 }
 
 export interface RateLimitWindow {

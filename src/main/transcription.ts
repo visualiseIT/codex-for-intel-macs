@@ -3,6 +3,7 @@ import { safeStorage } from "electron";
 import type { DictationAudio, TranscriptionStatus } from "../shared/types";
 
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
+const MIN_AUDIO_DURATION_MS = 400;
 const TRANSCRIPTION_MODEL = "gpt-transcribe";
 const SUPPORTED_AUDIO_TYPES = new Set([
   "audio/mp3",
@@ -19,6 +20,13 @@ export function validateDictationAudio(audio: DictationAudio): string {
     throw new Error("The microphone recording is empty.");
   if (audio.bytes.byteLength > MAX_AUDIO_BYTES)
     throw new Error("Dictation recordings must be 25 MB or smaller.");
+  if (
+    !Number.isFinite(audio.durationMs) ||
+    audio.durationMs < MIN_AUDIO_DURATION_MS
+  )
+    throw new Error(
+      "That recording was too short. Click the microphone, speak, then click it again to stop.",
+    );
   const mimeType = audio.mimeType.split(";", 1)[0].toLowerCase();
   if (!SUPPORTED_AUDIO_TYPES.has(mimeType))
     throw new Error(
@@ -32,7 +40,9 @@ export function transcriptionText(value: unknown): string {
     throw new Error("The transcription service returned an invalid response.");
   const text = (value as { text?: unknown }).text;
   if (typeof text !== "string" || !text.trim())
-    throw new Error("The transcription service returned no text.");
+    throw new Error(
+      "No speech was detected. Check the microphone input, then try again while speaking clearly.",
+    );
   return text.trim();
 }
 
@@ -81,6 +91,7 @@ export class TranscriptionService {
     const audioBuffer = new ArrayBuffer(audio.bytes.byteLength);
     new Uint8Array(audioBuffer).set(audio.bytes);
     body.append("model", TRANSCRIPTION_MODEL);
+    body.append("response_format", "json");
     body.append(
       "file",
       new Blob([audioBuffer], { type: mimeType }),

@@ -27,6 +27,7 @@ import {
   ThreadActionsDialog,
 } from "./Dialogs";
 import { DiffView } from "./DiffView";
+import { readableError } from "./errors";
 import { RichText } from "./RichText";
 import { isNearBottom, previousPromptOffset } from "./scroll";
 import { ThreadSidebar } from "./ThreadSidebar";
@@ -273,6 +274,7 @@ export function App(): React.JSX.Element {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recordingStreamRef = useRef<MediaStream | null>(null);
   const recordingChunksRef = useRef<Blob[]>([]);
+  const recordingStartedAtRef = useRef(0);
   const stickToBottomRef = useRef(true);
   const endRef = useRef<HTMLDivElement | null>(null);
   const requestedParentIdsRef = useRef(new Set<string>());
@@ -970,7 +972,10 @@ export function App(): React.JSX.Element {
 
   const startDictation = async (): Promise<void> => {
     if (dictationState === "recording") {
-      recorderRef.current?.stop();
+      const recorder = recorderRef.current;
+      if (recorder?.state === "recording") {
+        recorder.stop();
+      }
       return;
     }
     if (!transcriptionStatus.configured) {
@@ -1001,6 +1006,10 @@ export function App(): React.JSX.Element {
       recorder.onstop = () => {
         const mimeType = recorder.mimeType || preferred || "audio/webm";
         const blob = new Blob(recordingChunksRef.current, { type: mimeType });
+        const durationMs = Math.max(
+          0,
+          performance.now() - recordingStartedAtRef.current,
+        );
         stream.getTracks().forEach((track) => track.stop());
         recorderRef.current = null;
         recordingStreamRef.current = null;
@@ -1011,6 +1020,7 @@ export function App(): React.JSX.Element {
             window.codex.transcribeAudio({
               bytes: new Uint8Array(buffer),
               mimeType,
+              durationMs,
             }),
           )
           .then((text) => {
@@ -1020,12 +1030,11 @@ export function App(): React.JSX.Element {
             );
             promptRef.current?.focus();
           })
-          .catch((cause: unknown) =>
-            setError(cause instanceof Error ? cause.message : String(cause)),
-          )
+          .catch((cause: unknown) => setError(readableError(cause)))
           .finally(() => setDictationState("idle"));
       };
-      recorder.start();
+      recordingStartedAtRef.current = performance.now();
+      recorder.start(250);
       setDictationState("recording");
     } catch (cause) {
       setDictationState("idle");
