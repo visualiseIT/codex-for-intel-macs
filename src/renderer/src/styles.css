@@ -369,8 +369,7 @@ button {
   overflow: hidden;
   -webkit-app-region: drag;
 }
-.workspace-button,
-.toolbar select {
+.workspace-button {
   -webkit-app-region: no-drag;
 }
 .workspace-button {
@@ -438,19 +437,6 @@ button {
   min-width: 0;
   gap: 6px;
   -webkit-app-region: no-drag;
-}
-.toolbar select {
-  max-width: 170px;
-  padding: 6px 25px 6px 8px;
-  border: 1px solid #d8d4ca;
-  border-radius: 7px;
-  outline: none;
-  color: #5e5a51;
-  background: #f4f1ea;
-  font-size: 10.5px;
-}
-.toolbar select:focus {
-  border-color: #9e9584;
 }
 .settings-button {
   width: 29px;
@@ -1094,14 +1080,6 @@ button {
 :root[data-theme="dark"] .question-header {
   color: #baa27e;
 }
-:root[data-theme="dark"] .toolbar select {
-  border-color: #3c3e36;
-  color: #c8c7bf;
-  background: #23241f;
-}
-:root[data-theme="dark"] .toolbar select:focus {
-  border-color: #6e6d62;
-}
 :root[data-theme="dark"] .welcome p,
 :root[data-theme="dark"] .center-state,
 :root[data-theme="dark"] .modal-detail,
@@ -1237,9 +1215,6 @@ button {
 @media (max-width: 940px) {
   .app-shell {
     grid-template-columns: 235px minmax(0, 1fr);
-  }
-  .toolbar-controls select[aria-label="Reasoning effort"] {
-    display: none;
   }
   .suggestions {
     grid-template-columns: 1fr;
@@ -1704,6 +1679,49 @@ button {
   align-items: flex-end;
   gap: 9px;
 }
+.composer-settings {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  padding: 0 3px 1px 67px;
+  color: #8b8579;
+}
+.composer-settings label {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+.composer-settings label + label::before {
+  position: absolute;
+  left: -7px;
+  color: #d0cbc0;
+  content: "·";
+}
+.composer-settings select {
+  max-width: 145px;
+  padding: 1px 13px 1px 0;
+  overflow: hidden;
+  appearance: none;
+  border: 0;
+  outline: 0;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  font-size: 9.5px;
+  text-overflow: ellipsis;
+}
+.composer-settings label > span {
+  position: absolute;
+  right: 0;
+  pointer-events: none;
+  font-size: 10px;
+}
+.composer-settings label:focus-within,
+.composer-settings label:hover {
+  color: #4f4a42;
+}
 .composer textarea {
   height: auto;
   max-height: 180px;
@@ -2146,6 +2164,16 @@ button {
   border-color: #41433a;
   color: #d4d2c9;
 }
+:root[data-theme="dark"] .composer-settings {
+  color: #92938a;
+}
+:root[data-theme="dark"] .composer-settings label + label::before {
+  color: #484a41;
+}
+:root[data-theme="dark"] .composer-settings label:focus-within,
+:root[data-theme="dark"] .composer-settings label:hover {
+  color: #dedcd4;
+}
 :root[data-theme="dark"] .queue-button {
   background: #6c5c47;
 }
@@ -2172,12 +2200,6 @@ button {
   }
 }
 
-@media (max-width: 1010px) {
-  .toolbar-controls select[aria-label="Sandbox mode"] {
-    display: none;
-  }
-}
-
 @container (max-width: 850px) {
   .usage-pill {
     display: none;
@@ -2185,17 +2207,18 @@ button {
 }
 
 @container (max-width: 720px) {
-  .toolbar-controls select[aria-label="Sandbox mode"] {
-    display: none;
-  }
   .suggestions {
     grid-template-columns: 1fr;
   }
 }
 
 @container (max-width: 590px) {
-  .toolbar-controls select[aria-label="Reasoning effort"] {
-    display: none;
+  .composer-settings {
+    gap: 8px;
+    padding-left: 3px;
+  }
+  .composer-settings select {
+    max-width: 115px;
   }
   .toolbar {
     padding-left: 10px;

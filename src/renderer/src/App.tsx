@@ -1419,57 +1419,6 @@ export function App(): React.JSX.Element {
                 {Math.round(usage.primary.usedPercent)}% used
               </button>
             ) : null}
-            <select
-              aria-label="Model"
-              value={settings.model}
-              onChange={(event) => {
-                const model = models.find(
-                  (item) => item.id === event.target.value,
-                );
-                setSettings((current) => ({
-                  ...current,
-                  model: event.target.value,
-                  effort: model?.defaultEffort ?? current.effort,
-                }));
-              }}
-            >
-              {!models.length ? <option value="">Default model</option> : null}
-              {models.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.label}
-                </option>
-              ))}
-            </select>
-            <select
-              aria-label="Reasoning effort"
-              value={settings.effort}
-              onChange={(event) =>
-                setSettings((current) => ({
-                  ...current,
-                  effort: event.target.value,
-                }))
-              }
-            >
-              {effortOptions.map((effort) => (
-                <option key={effort} value={effort}>
-                  {effort} effort
-                </option>
-              ))}
-            </select>
-            <select
-              aria-label="Sandbox mode"
-              value={settings.sandbox}
-              onChange={(event) =>
-                setSettings((current) => ({
-                  ...current,
-                  sandbox: event.target.value as SandboxMode,
-                }))
-              }
-            >
-              <option value="read-only">Read only</option>
-              <option value="workspace-write">Workspace write</option>
-              <option value="danger-full-access">Full access</option>
-            </select>
             <button
               className="settings-button"
               onClick={() => setSettingsOpen(true)}
@@ -1789,6 +1738,70 @@ export function App(): React.JSX.Element {
                   ↑
                 </button>
               )}
+            </div>
+            <div className="composer-settings" aria-label="Turn settings">
+              <label title="Model">
+                <select
+                  aria-label="Model"
+                  value={settings.model}
+                  onChange={(event) => {
+                    const model = models.find(
+                      (item) => item.id === event.target.value,
+                    );
+                    setSettings((current) => ({
+                      ...current,
+                      model: event.target.value,
+                      effort: model?.defaultEffort ?? current.effort,
+                    }));
+                  }}
+                >
+                  {!models.length ? (
+                    <option value="">Default model</option>
+                  ) : null}
+                  {models.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.label}
+                    </option>
+                  ))}
+                </select>
+                <span aria-hidden="true">⌄</span>
+              </label>
+              <label title="Reasoning effort">
+                <select
+                  aria-label="Reasoning effort"
+                  value={settings.effort}
+                  onChange={(event) =>
+                    setSettings((current) => ({
+                      ...current,
+                      effort: event.target.value,
+                    }))
+                  }
+                >
+                  {effortOptions.map((effort) => (
+                    <option key={effort} value={effort}>
+                      {effort} effort
+                    </option>
+                  ))}
+                </select>
+                <span aria-hidden="true">⌄</span>
+              </label>
+              <label title="Workspace access">
+                <select
+                  aria-label="Sandbox mode"
+                  value={settings.sandbox}
+                  onChange={(event) =>
+                    setSettings((current) => ({
+                      ...current,
+                      sandbox: event.target.value as SandboxMode,
+                    }))
+                  }
+                >
+                  <option value="read-only">Read only</option>
+                  <option value="workspace-write">Workspace write</option>
+                  <option value="danger-full-access">Full access</option>
+                </select>
+                <span aria-hidden="true">⌄</span>
+              </label>
             </div>
           </div>
           <p className="composer-note">
