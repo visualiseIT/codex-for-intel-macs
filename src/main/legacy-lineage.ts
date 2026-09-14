@@ -35,10 +35,10 @@ async function readLegacyHeader(path: string): Promise<SessionHeader | null> {
     };
     const payload = parsed.payload ?? {};
     const id =
-      typeof payload.session_id === "string"
-        ? payload.session_id
-        : typeof payload.id === "string"
-          ? payload.id
+      typeof payload.id === "string"
+        ? payload.id
+        : typeof payload.session_id === "string"
+          ? payload.session_id
           : "";
     if (!id) return null;
     return {

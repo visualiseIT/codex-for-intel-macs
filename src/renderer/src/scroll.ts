@@ -17,3 +17,11 @@ export function previousPromptOffset(
   );
   return previous.at(-1) ?? null;
 }
+
+export function nextPromptOffset(
+  promptOffsets: number[],
+  scrollTop: number,
+  threshold = 20,
+): number | null {
+  return promptOffsets.find((offset) => offset > scrollTop + threshold) ?? null;
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isNearBottom, previousPromptOffset } from "./scroll";
+import { isNearBottom, nextPromptOffset, previousPromptOffset } from "./scroll";
 
 describe("isNearBottom", () => {
   it("keeps following output near the end of the conversation", () => {
@@ -18,5 +18,15 @@ describe("previousPromptOffset", () => {
 
   it("does not jump when no earlier prompt exists", () => {
     expect(previousPromptOffset([100, 300], 110)).toBeNull();
+  });
+});
+
+describe("nextPromptOffset", () => {
+  it("finds the nearest prompt below the current scroll position", () => {
+    expect(nextPromptOffset([40, 300, 720], 330)).toBe(720);
+  });
+
+  it("does not jump when no later prompt exists", () => {
+    expect(nextPromptOffset([100, 300], 290)).toBeNull();
   });
 });

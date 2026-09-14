@@ -39,7 +39,7 @@ import { DiffView } from "./DiffView";
 import { readableError } from "./errors";
 import { prependHistoryItems } from "./history";
 import { RichText } from "./RichText";
-import { isNearBottom, previousPromptOffset } from "./scroll";
+import { isNearBottom, nextPromptOffset, previousPromptOffset } from "./scroll";
 import { ThreadSidebar } from "./ThreadSidebar";
 import { buildThreadProjects, mergeThreadSummaries } from "./thread-tree";
 
@@ -297,6 +297,7 @@ export function App(): React.JSX.Element {
   );
   const [error, setError] = useState("");
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+  const [showNextPrompt, setShowNextPrompt] = useState(false);
   const activeThreadRef = useRef<string | null>(null);
   const promptRef = useRef<HTMLTextAreaElement | null>(null);
   const conversationRef = useRef<HTMLElement | null>(null);
@@ -733,6 +734,7 @@ export function App(): React.JSX.Element {
     setOlderTurnsCursor(null);
     stickToBottomRef.current = true;
     setShowJumpToLatest(false);
+    setShowNextPrompt(false);
     try {
       const result = await window.codex.openThread(thread.id);
       activeThreadRef.current = result.thread.id;
@@ -762,6 +764,9 @@ export function App(): React.JSX.Element {
     void window.codex
       .openThread(pendingThreadFocus)
       .then((result) => {
+        stickToBottomRef.current = true;
+        setShowJumpToLatest(false);
+        setShowNextPrompt(false);
         historyPagingEnabledRef.current = false;
         activeThreadRef.current = result.thread.id;
         setSelectedThread(result.thread);
@@ -842,6 +847,7 @@ export function App(): React.JSX.Element {
     setError("");
     stickToBottomRef.current = true;
     setShowJumpToLatest(false);
+    setShowNextPrompt(false);
     promptRef.current?.focus();
   };
 
@@ -971,6 +977,7 @@ export function App(): React.JSX.Element {
     setRunning(true);
     stickToBottomRef.current = true;
     setShowJumpToLatest(false);
+    setShowNextPrompt(false);
     try {
       let thread = selectedThread;
       if (!thread) {
@@ -1558,6 +1565,14 @@ export function App(): React.JSX.Element {
             );
             stickToBottomRef.current = nearBottom;
             setShowJumpToLatest(!nearBottom);
+            const promptOffsets = Array.from(
+              element.querySelectorAll<HTMLElement>(
+                '[data-user-prompt="true"]',
+              ),
+            ).map((promptElement) => promptElement.offsetTop);
+            setShowNextPrompt(
+              nextPromptOffset(promptOffsets, element.scrollTop) !== null,
+            );
             if (historyPagingEnabledRef.current && element.scrollTop <= 80)
               void loadEarlierTurns();
           }}
@@ -1702,6 +1717,30 @@ export function App(): React.JSX.Element {
               >
                 ↑ Previous prompt
               </button>
+              {showNextPrompt ? (
+                <button
+                  onClick={() => {
+                    const conversation = conversationRef.current;
+                    if (!conversation) return;
+                    const offsets = Array.from(
+                      conversation.querySelectorAll<HTMLElement>(
+                        '[data-user-prompt="true"]',
+                      ),
+                    ).map((element) => element.offsetTop);
+                    const target = nextPromptOffset(
+                      offsets,
+                      conversation.scrollTop,
+                    );
+                    if (target !== null)
+                      conversation.scrollTo({
+                        top: Math.max(0, target - 14),
+                        behavior: "smooth",
+                      });
+                  }}
+                >
+                  ↓ Next prompt
+                </button>
+              ) : null}
               {selectedThread?.forkedAtTurnId ? (
                 <button
                   onClick={() => void jumpToForkPoint()}
@@ -1714,6 +1753,7 @@ export function App(): React.JSX.Element {
                 onClick={() => {
                   stickToBottomRef.current = true;
                   setShowJumpToLatest(false);
+                  setShowNextPrompt(false);
                   endRef.current?.scrollIntoView({
                     behavior: "smooth",
                     block: "end",

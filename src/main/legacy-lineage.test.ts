@@ -74,4 +74,46 @@ describe("loadLegacyLineage", () => {
       new Map([["child", { parentId: "parent", forkedAtTurnId: "fork-turn" }]]),
     );
   });
+
+  it("does not let a subagent session overwrite its parent file path", async () => {
+    const root = await mkdtemp(join(tmpdir(), "codex-lineage-"));
+    directories.push(root);
+    const parentHistory = [
+      JSON.stringify({
+        type: "session_meta",
+        payload: { id: "parent", session_id: "parent" },
+      }),
+      JSON.stringify({
+        type: "event_msg",
+        payload: { type: "task_complete", turn_id: "parent-turn" },
+      }),
+      "",
+    ].join("\n");
+    await writeFile(join(root, "parent.jsonl"), parentHistory);
+    await writeFile(
+      join(root, "subagent.jsonl"),
+      `${JSON.stringify({
+        type: "session_meta",
+        payload: { id: "subagent", session_id: "parent" },
+      })}\n`,
+    );
+    await writeFile(
+      join(root, "child.jsonl"),
+      `${JSON.stringify({
+        type: "session_meta",
+        payload: {
+          id: "child",
+          session_id: "child",
+          forked_from_id: "parent",
+          history_base: { end_byte_offset: Buffer.byteLength(parentHistory) },
+        },
+      })}\n`,
+    );
+
+    await expect(loadLegacyForkMetadata(root)).resolves.toEqual(
+      new Map([
+        ["child", { parentId: "parent", forkedAtTurnId: "parent-turn" }],
+      ]),
+    );
+  });
 });
