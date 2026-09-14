@@ -1301,7 +1301,8 @@ button {
   background: #dfdcd3;
 }
 .thread-row-wrap.selected {
-  background: #d4d0c5;
+  background: #dce9dd;
+  box-shadow: inset 3px 0 #5f8a68;
 }
 .thread-row-wrap.starred {
   background: #ece4d5;
@@ -1311,7 +1312,11 @@ button {
   background: #e5dccb;
 }
 .thread-row-wrap.starred.selected {
-  background: #d8cfbd;
+  background: #dce9dd;
+  box-shadow: inset 3px 0 #5f8a68;
+}
+.thread-row-wrap.selected .thread-title {
+  color: #294d31;
 }
 .thread-row-wrap .thread-row {
   min-width: 0;
@@ -2003,7 +2008,8 @@ button {
   background: #2b2c27;
 }
 :root[data-theme="dark"] .thread-row-wrap.selected {
-  background: #35362f;
+  background: #293a2e;
+  box-shadow: inset 3px 0 #64906c;
 }
 :root[data-theme="dark"] .thread-row-wrap.starred {
   background: #302c24;
@@ -2013,7 +2019,11 @@ button {
   background: #393329;
 }
 :root[data-theme="dark"] .thread-row-wrap.starred.selected {
-  background: #40392d;
+  background: #293a2e;
+  box-shadow: inset 3px 0 #64906c;
+}
+:root[data-theme="dark"] .thread-row-wrap.selected .thread-title {
+  color: #d9eadb;
 }
 :root[data-theme="dark"] .thread-star {
   color: #c7a76e;
