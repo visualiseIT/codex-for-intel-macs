@@ -295,6 +295,7 @@ export function App(): React.JSX.Element {
     scrollHeight: number;
     scrollTop: number;
   } | null>(null);
+  const pendingTurnJumpRef = useRef<string | null>(null);
   const stickToBottomRef = useRef(true);
   const endRef = useRef<HTMLDivElement | null>(null);
   const requestedParentIdsRef = useRef(new Set<string>());
@@ -604,8 +605,21 @@ export function App(): React.JSX.Element {
   }, [items]);
 
   useLayoutEffect(() => {
-    const pending = pendingScrollRestoreRef.current;
+    const pendingTurnId = pendingTurnJumpRef.current;
     const conversation = conversationRef.current;
+    if (pendingTurnId && conversation) {
+      const target = Array.from(
+        conversation.querySelectorAll<HTMLElement>("[data-turn-id]"),
+      ).find((element) => element.dataset.turnId === pendingTurnId);
+      if (target) {
+        conversation.scrollTop = Math.max(0, target.offsetTop - 14);
+        pendingTurnJumpRef.current = null;
+        pendingScrollRestoreRef.current = null;
+        setShowJumpToLatest(true);
+        return;
+      }
+    }
+    const pending = pendingScrollRestoreRef.current;
     if (!pending || !conversation) return;
     conversation.scrollTop =
       pending.scrollTop + conversation.scrollHeight - pending.scrollHeight;
@@ -637,6 +651,53 @@ export function App(): React.JSX.Element {
         };
       setItems((current) => prependHistoryItems(current, page.items));
       setOlderTurnsCursor(page.nextCursor);
+    } catch (cause) {
+      setError(readableError(cause));
+    } finally {
+      loadingOlderTurnsRef.current = false;
+      setLoadingOlderTurns(false);
+    }
+  };
+
+  const jumpToForkPoint = async (): Promise<void> => {
+    const threadId = activeThreadRef.current;
+    const turnId = selectedThread?.forkedAtTurnId;
+    const conversation = conversationRef.current;
+    if (!threadId || !turnId || !conversation) return;
+    const visibleTarget = Array.from(
+      conversation.querySelectorAll<HTMLElement>("[data-turn-id]"),
+    ).find((element) => element.dataset.turnId === turnId);
+    if (visibleTarget) {
+      conversation.scrollTo({
+        top: Math.max(0, visibleTarget.offsetTop - 14),
+        behavior: "smooth",
+      });
+      return;
+    }
+
+    if (loadingOlderTurnsRef.current) return;
+    loadingOlderTurnsRef.current = true;
+    setLoadingOlderTurns(true);
+    try {
+      let collected = items;
+      let cursor = olderTurnsCursor;
+      while (cursor && !collected.some((item) => item.turnId === turnId)) {
+        const page = await window.codex.loadEarlierThreadTurns(
+          threadId,
+          cursor,
+        );
+        if (activeThreadRef.current !== threadId) return;
+        collected = prependHistoryItems(collected, page.items);
+        cursor = page.nextCursor;
+      }
+      if (!collected.some((item) => item.turnId === turnId)) {
+        setError("The fork point could not be found in this conversation.");
+        return;
+      }
+      pendingTurnJumpRef.current = turnId;
+      pendingScrollRestoreRef.current = null;
+      setOlderTurnsCursor(cursor);
+      setItems(collected);
     } catch (cause) {
       setError(readableError(cause));
     } finally {
@@ -1504,9 +1565,16 @@ export function App(): React.JSX.Element {
               {visibleItems.map((item) => (
                 <article
                   key={item.id}
-                  className={`message ${item.kind}`}
+                  className={`message ${item.kind} ${item.kind === "user" && item.turnId === selectedThread?.forkedAtTurnId ? "fork-point" : ""}`}
                   data-user-prompt={item.kind === "user" ? "true" : undefined}
+                  data-turn-id={item.turnId}
                 >
+                  {item.kind === "user" &&
+                  item.turnId === selectedThread?.forkedAtTurnId ? (
+                    <div className="fork-point-marker">
+                      <span>Fork starts here</span>
+                    </div>
+                  ) : null}
                   <div className="message-icon">{itemIcon(item.kind)}</div>
                   <div className="message-body">
                     <div className="message-heading">
@@ -1579,6 +1647,14 @@ export function App(): React.JSX.Element {
               >
                 ↑ Previous prompt
               </button>
+              {selectedThread?.forkedAtTurnId ? (
+                <button
+                  onClick={() => void jumpToForkPoint()}
+                  disabled={loadingOlderTurns}
+                >
+                  {loadingOlderTurns ? "Finding fork point…" : "↳ Fork point"}
+                </button>
+              ) : null}
               <button
                 onClick={() => {
                   stickToBottomRef.current = true;

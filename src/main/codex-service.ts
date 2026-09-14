@@ -26,7 +26,10 @@ import type {
 } from "../shared/types";
 import { CodexProcess } from "./codex-process";
 import { prepareImageAttachments } from "./image-attachments";
-import { loadLegacyLineage } from "./legacy-lineage";
+import {
+  loadLegacyForkMetadata,
+  type LegacyForkMetadata,
+} from "./legacy-lineage";
 import {
   normalizeNotification,
   normalizeThread,
@@ -182,10 +185,10 @@ function sandboxPolicy(settings: CodexSettings): unknown {
 
 export class CodexService extends EventEmitter {
   private readonly process = new CodexProcess();
-  private readonly legacyLineage = loadLegacyLineage(
+  private readonly legacyForkMetadata = loadLegacyForkMetadata(
     join(process.env.CODEX_HOME || join(homedir(), ".codex"), "sessions"),
   );
-  private readonly runtimeLineage = new Map<string, string>();
+  private readonly runtimeForkMetadata = new Map<string, LegacyForkMetadata>();
   private state: ConnectionState = "disconnected";
   private stateMessage: string | undefined;
 
@@ -248,6 +251,24 @@ export class CodexService extends EventEmitter {
     this.setState("disconnected");
   }
 
+  private withForkMetadata(
+    thread: ThreadSummary,
+    legacy: Map<string, LegacyForkMetadata>,
+  ): ThreadSummary {
+    const runtime = this.runtimeForkMetadata.get(thread.id);
+    const stored = legacy.get(thread.id);
+    return {
+      ...thread,
+      forkedFromId:
+        thread.forkedFromId ?? runtime?.parentId ?? stored?.parentId ?? null,
+      forkedAtTurnId:
+        thread.forkedAtTurnId ??
+        runtime?.forkedAtTurnId ??
+        stored?.forkedAtTurnId ??
+        null,
+    };
+  }
+
   async listThreads(input: ThreadListInput = {}): Promise<ThreadPage> {
     const result = await this.process.request<UnknownRecord>("thread/list", {
       limit: 50,
@@ -259,20 +280,12 @@ export class CodexService extends EventEmitter {
       ...(input.searchTerm ? { searchTerm: input.searchTerm } : {}),
     });
     const data = result.data;
-    const legacyLineage = await this.legacyLineage;
+    const legacyForkMetadata = await this.legacyForkMetadata;
     return {
       threads: Array.isArray(data)
         ? data.map((value) => {
             const thread = normalizeThread(value);
-            return thread.forkedFromId
-              ? thread
-              : {
-                  ...thread,
-                  forkedFromId:
-                    this.runtimeLineage.get(thread.id) ??
-                    legacyLineage.get(thread.id) ??
-                    null,
-                };
+            return this.withForkMetadata(thread, legacyForkMetadata);
           })
         : [],
       nextCursor:
@@ -322,17 +335,9 @@ export class CodexService extends EventEmitter {
     });
     const page = await normalizeHistoryPage(result.initialTurnsPage);
     const thread = normalizeThread(result.thread);
-    const legacyLineage = await this.legacyLineage;
+    const legacyForkMetadata = await this.legacyForkMetadata;
     return {
-      thread: thread.forkedFromId
-        ? thread
-        : {
-            ...thread,
-            forkedFromId:
-              this.runtimeLineage.get(thread.id) ??
-              legacyLineage.get(thread.id) ??
-              null,
-          },
+      thread: this.withForkMetadata(thread, legacyForkMetadata),
       items: page.items,
       nextCursor: page.nextCursor,
     };
@@ -365,21 +370,11 @@ export class CodexService extends EventEmitter {
         }),
       ),
     );
-    const legacyLineage = await this.legacyLineage;
+    const legacyForkMetadata = await this.legacyForkMetadata;
     return results.flatMap((result) => {
       if (result.status !== "fulfilled") return [];
       const thread = normalizeThread(result.value.thread);
-      return [
-        thread.forkedFromId
-          ? thread
-          : {
-              ...thread,
-              forkedFromId:
-                this.runtimeLineage.get(thread.id) ??
-                legacyLineage.get(thread.id) ??
-                null,
-            },
-      ];
+      return [this.withForkMetadata(thread, legacyForkMetadata)];
     });
   }
 
@@ -414,16 +409,37 @@ export class CodexService extends EventEmitter {
     threadId: string,
     lastTurnId?: string,
   ): Promise<ThreadSummary> {
+    let forkedAtTurnId = lastTurnId;
+    if (!forkedAtTurnId) {
+      try {
+        const page = await this.process.request<UnknownRecord>(
+          "thread/turns/list",
+          {
+            threadId,
+            limit: 1,
+            sortDirection: "desc",
+            itemsView: "full",
+          },
+        );
+        const newestTurn = Array.isArray(page.data) ? record(page.data[0]) : {};
+        forkedAtTurnId = string(newestTurn.id) || undefined;
+      } catch {
+        // Forking can still proceed when an older server cannot list turns.
+      }
+    }
     const result = await this.process.request<UnknownRecord>("thread/fork", {
       threadId,
-      ...(lastTurnId ? { lastTurnId } : {}),
+      ...(forkedAtTurnId ? { lastTurnId: forkedAtTurnId } : {}),
       excludeTurns: true,
       deferGoalContinuation: true,
       threadSource: "codex-desktop-intel",
     });
     const forked = normalizeThread(result.thread);
-    this.runtimeLineage.set(forked.id, forked.forkedFromId ?? threadId);
-    return { ...forked, forkedFromId: forked.forkedFromId ?? threadId };
+    this.runtimeForkMetadata.set(forked.id, {
+      parentId: forked.forkedFromId ?? threadId,
+      forkedAtTurnId: forked.forkedAtTurnId ?? forkedAtTurnId ?? null,
+    });
+    return this.withForkMetadata(forked, new Map());
   }
 
   async compactThread(threadId: string): Promise<void> {

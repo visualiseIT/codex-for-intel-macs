@@ -543,6 +543,24 @@ button {
   gap: 11px;
   padding: 15px 0;
 }
+.fork-point-marker {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: 8px;
+  color: #9a8663;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.fork-point-marker::before,
+.fork-point-marker::after {
+  height: 1px;
+  flex: 1;
+  background: #d8cbb6;
+  content: "";
+}
 .message-icon {
   display: grid;
   width: 27px;
@@ -1991,6 +2009,13 @@ button {
 :root[data-theme="dark"] .fork-count {
   color: #bcb7aa;
   background: #3c3e36;
+}
+:root[data-theme="dark"] .fork-point-marker {
+  color: #b89c70;
+}
+:root[data-theme="dark"] .fork-point-marker::before,
+:root[data-theme="dark"] .fork-point-marker::after {
+  background: #4f4638;
 }
 :root[data-theme="dark"] .sidebar-toggle:hover {
   background: #34362f;

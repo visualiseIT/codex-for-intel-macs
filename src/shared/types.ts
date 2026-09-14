@@ -23,6 +23,7 @@ export interface ThreadSummary {
   updatedAt: number;
   status: string;
   forkedFromId: string | null;
+  forkedAtTurnId: string | null;
   projectId: string | null;
 }
 

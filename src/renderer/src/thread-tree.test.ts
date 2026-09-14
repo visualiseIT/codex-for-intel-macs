@@ -16,6 +16,7 @@ function thread(
     updatedAt: 1,
     status: "idle",
     forkedFromId: null,
+    forkedAtTurnId: null,
     projectId: null,
     ...options,
   };

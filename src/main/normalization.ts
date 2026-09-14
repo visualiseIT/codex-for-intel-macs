@@ -94,6 +94,8 @@ export function normalizeThread(value: unknown): ThreadSummary {
     status: statusText(thread.status),
     forkedFromId:
       typeof thread.forkedFromId === "string" ? thread.forkedFromId : null,
+    forkedAtTurnId:
+      typeof thread.forkedAtTurnId === "string" ? thread.forkedAtTurnId : null,
     projectId: typeof thread.projectId === "string" ? thread.projectId : null,
   };
 }
