@@ -1,6 +1,6 @@
 {
   "name": "codex-desktop-intel",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "private": true,
   "description": "A small Intel-compatible macOS desktop client for the Codex CLI",
   "main": "out/main/index.js",
