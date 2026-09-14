@@ -1305,7 +1305,7 @@ button {
 .thread-more {
   position: absolute;
   top: 7px;
-  right: 5px;
+  right: 31px;
   width: 27px;
   height: 27px;
   border: 0;
@@ -1319,7 +1319,7 @@ button {
 .thread-star {
   position: absolute;
   top: 7px;
-  right: 31px;
+  right: 5px;
   width: 26px;
   height: 27px;
   border: 0;
