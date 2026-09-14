@@ -123,10 +123,17 @@ function normalizeQueuedPrompt(value: unknown): QueuedPrompt {
     const type = record(part).type;
     return type === "image" || type === "localImage";
   }).length;
+  const imagePaths = input.flatMap((part) => {
+    const value = record(part);
+    return value.type === "localImage" && typeof value.path === "string"
+      ? [value.path]
+      : [];
+  });
   return {
     id: string(queued.id),
     text: texts.join("\n"),
     imageCount,
+    imagePaths,
   };
 }
 

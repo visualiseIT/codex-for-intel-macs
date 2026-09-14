@@ -118,6 +118,7 @@ export interface QueuedPrompt {
   id: string;
   text: string;
   imageCount: number;
+  imagePaths: string[];
 }
 
 export type ThreadGoalStatus =

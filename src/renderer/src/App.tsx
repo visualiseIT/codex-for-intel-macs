@@ -122,6 +122,13 @@ function formatReset(timestamp: number | null): string {
   return `Resets in ${hours}h${remaining ? ` ${remaining}m` : ""}`;
 }
 
+function containsDraggedFiles(dataTransfer: DataTransfer): boolean {
+  return (
+    Array.from(dataTransfer.types).includes("Files") ||
+    Array.from(dataTransfer.items).some((item) => item.kind === "file")
+  );
+}
+
 function itemIcon(kind: ChatItem["kind"]): string {
   switch (kind) {
     case "user":
@@ -1053,6 +1060,36 @@ export function App(): React.JSX.Element {
     }
   };
 
+  const recallQueuedPrompt = async (queued: QueuedPrompt): Promise<void> => {
+    if (!selectedThread || (!queued.text && !queued.imagePaths.length)) return;
+    if (
+      (prompt.trim() || attachments.length) &&
+      (prompt !== queued.text || attachments.length) &&
+      !window.confirm("Replace the current draft with this queued prompt?")
+    )
+      return;
+    try {
+      const recalledAttachments = queued.imagePaths.length
+        ? await window.codex.prepareImages(queued.imagePaths)
+        : [];
+      await window.codex.deleteQueuedPrompt(selectedThread.id, queued.id);
+      setQueuedPrompts((current) =>
+        current.filter((item) => item.id !== queued.id),
+      );
+      setPrompt(queued.text);
+      setAttachments(recalledAttachments);
+      window.requestAnimationFrame(() => {
+        promptRef.current?.focus();
+        promptRef.current?.setSelectionRange(
+          queued.text.length,
+          queued.text.length,
+        );
+      });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  };
+
   const forkConversation = async (
     thread: ThreadSummary,
     lastTurnId?: string,
@@ -1326,14 +1363,19 @@ export function App(): React.JSX.Element {
         gridTemplateColumns: `${sidebarCollapsed ? 58 : sidebarWidth}px minmax(0, 1fr)`,
       }}
       onDragEnter={(event) => {
+        if (!containsDraggedFiles(event.dataTransfer)) return;
         event.preventDefault();
         setDragging(true);
       }}
-      onDragOver={(event) => event.preventDefault()}
+      onDragOver={(event) => {
+        if (containsDraggedFiles(event.dataTransfer)) event.preventDefault();
+      }}
       onDragLeave={(event) => {
-        if (event.currentTarget === event.target) setDragging(false);
+        if (dragging && event.currentTarget === event.target)
+          setDragging(false);
       }}
       onDrop={(event) => {
+        if (!containsDraggedFiles(event.dataTransfer)) return;
         event.preventDefault();
         setDragging(false);
         void attachFiles(event.dataTransfer.files);
@@ -1455,6 +1497,11 @@ export function App(): React.JSX.Element {
               <span className="folder-icon">▱</span>
               <span>{shortPath(settings.cwd)}</span>
             </button>
+            {selectedThread ? (
+              <span className="conversation-title" title={selectedThread.title}>
+                {selectedThread.title}
+              </span>
+            ) : null}
             {selectedThread?.forkedFromId ? (
               <button
                 className="fork-badge"
@@ -1468,15 +1515,6 @@ export function App(): React.JSX.Element {
                   `${selectedThread.forkedFromId.slice(0, 8)}…`}
               </button>
             ) : null}
-            {selectedThread ? (
-              <button
-                className={`goal-button ${goal ? "active" : ""}`}
-                onClick={() => void openGoal(selectedThread.id)}
-                title={goal?.objective ?? "Set a conversation goal"}
-              >
-                ◎ {goal ? goal.status : "Goal"}
-              </button>
-            ) : null}
           </div>
           <div className="toolbar-controls">
             {usage?.primary ? (
@@ -1486,6 +1524,15 @@ export function App(): React.JSX.Element {
                 title={`${usage.label}: ${usage.primary.usedPercent}% used · ${formatReset(usage.primary.resetsAt)}`}
               >
                 {Math.round(usage.primary.usedPercent)}% used
+              </button>
+            ) : null}
+            {selectedThread ? (
+              <button
+                className={`goal-button ${goal ? "active" : ""}`}
+                onClick={() => void openGoal(selectedThread.id)}
+                title={goal?.objective ?? "Set a conversation goal"}
+              >
+                ◎ {goal ? goal.status : "Goal"}
               </button>
             ) : null}
             <button
@@ -1697,6 +1744,19 @@ export function App(): React.JSX.Element {
                     <span>
                       {queued.text || `${queued.imageCount} queued image(s)`}
                     </span>
+                    <button
+                      className="recall-queued"
+                      onClick={() => void recallQueuedPrompt(queued)}
+                      disabled={!queued.text && !queued.imagePaths.length}
+                      aria-label="Return queued prompt to composer"
+                      title={
+                        queued.text || queued.imagePaths.length
+                          ? "Return to composer for editing"
+                          : "This queued prompt cannot be restored"
+                      }
+                    >
+                      ↶
+                    </button>
                     <button
                       onClick={() => void deleteQueuedPrompt(queued.id)}
                       aria-label="Remove queued prompt"
