@@ -601,8 +601,12 @@ button {
   min-height: 20px;
 }
 .message-heading strong {
+  min-width: 0;
+  overflow: hidden;
   font-size: 11.5px;
+  text-overflow: ellipsis;
   text-transform: capitalize;
+  white-space: nowrap;
 }
 .fork-turn-button {
   margin-left: auto;
@@ -672,6 +676,7 @@ button {
   font-size: 10.5px;
 }
 .status-pill {
+  flex: 0 0 auto;
   padding: 2px 6px;
   border-radius: 999px;
   color: #746f65;
@@ -1581,6 +1586,12 @@ button {
   overflow: auto;
   white-space: pre-wrap;
 }
+.activity-output .activity-command {
+  padding-bottom: 7px;
+  border-bottom: 1px solid #d5d0c5;
+  color: #655744;
+  font-weight: 700;
+}
 .activity-actions {
   display: flex;
   justify-content: flex-end;
@@ -2118,6 +2129,10 @@ button {
 :root[data-theme="dark"] .diff-truncated,
 :root[data-theme="dark"] .activity-actions {
   color: #a3a49b;
+}
+:root[data-theme="dark"] .activity-output .activity-command {
+  border-bottom-color: #41433a;
+  color: #c7b38f;
 }
 :root[data-theme="dark"] .attach-button {
   border-color: #41433a;

@@ -186,7 +186,15 @@ const MessageContent = memo(function MessageContent({
     item.kind === "reasoning"
   )
     return item.text ? <RichText text={item.text} /> : null;
-  if (item.kind === "command" || item.kind === "tool")
+  if (item.kind === "command")
+    return (
+      <ActivityOutput
+        text={item.text}
+        command={item.title}
+        collapsedByDefault
+      />
+    );
+  if (item.kind === "tool")
     return item.text ? <ActivityOutput text={item.text} /> : null;
   return item.text ? <pre className="plain-message">{item.text}</pre> : null;
 });
