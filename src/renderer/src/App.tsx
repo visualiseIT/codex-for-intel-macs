@@ -37,7 +37,7 @@ import {
 } from "./Dialogs";
 import { DiffView } from "./DiffView";
 import { readableError } from "./errors";
-import { prependHistoryItems } from "./history";
+import { firstForkPromptTurnId, prependHistoryItems } from "./history";
 import { RichText } from "./RichText";
 import { isNearBottom, nextPromptOffset, previousPromptOffset } from "./scroll";
 import { ThreadSidebar } from "./ThreadSidebar";
@@ -336,6 +336,10 @@ export function App(): React.JSX.Element {
   const parentThread = selectedThread?.forkedFromId
     ? (threadById.get(selectedThread.forkedFromId) ?? null)
     : null;
+  const forkStartTurnId = useMemo(
+    () => firstForkPromptTurnId(items, selectedThread?.forkedAtTurnId ?? null),
+    [items, selectedThread?.forkedAtTurnId],
+  );
 
   const rememberThreads = useCallback((incoming: ThreadSummary[]) => {
     setThreadContext((current) => {
@@ -677,12 +681,13 @@ export function App(): React.JSX.Element {
 
   const jumpToForkPoint = async (): Promise<void> => {
     const threadId = activeThreadRef.current;
-    const turnId = selectedThread?.forkedAtTurnId;
+    const parentBoundaryTurnId = selectedThread?.forkedAtTurnId;
     const conversation = conversationRef.current;
-    if (!threadId || !turnId || !conversation) return;
+    if (!threadId || !parentBoundaryTurnId || !conversation) return;
+    const turnId = firstForkPromptTurnId(items, parentBoundaryTurnId);
     const visibleTarget = Array.from(
       conversation.querySelectorAll<HTMLElement>("[data-turn-id]"),
-    ).find((element) => element.dataset.turnId === turnId);
+    ).find((element) => turnId && element.dataset.turnId === turnId);
     if (visibleTarget) {
       conversation.scrollTo({
         top: Math.max(0, visibleTarget.offsetTop - 14),
@@ -697,7 +702,8 @@ export function App(): React.JSX.Element {
     try {
       let collected = items;
       let cursor = olderTurnsCursor;
-      while (cursor && !collected.some((item) => item.turnId === turnId)) {
+      let forkTurnId = firstForkPromptTurnId(collected, parentBoundaryTurnId);
+      while (cursor && !forkTurnId) {
         const page = await window.codex.loadEarlierThreadTurns(
           threadId,
           cursor,
@@ -705,12 +711,13 @@ export function App(): React.JSX.Element {
         if (activeThreadRef.current !== threadId) return;
         collected = prependHistoryItems(collected, page.items);
         cursor = page.nextCursor;
+        forkTurnId = firstForkPromptTurnId(collected, parentBoundaryTurnId);
       }
-      if (!collected.some((item) => item.turnId === turnId)) {
-        setError("The fork point could not be found in this conversation.");
+      if (!forkTurnId) {
+        setError("The first prompt in this fork could not be found.");
         return;
       }
-      pendingTurnJumpRef.current = turnId;
+      pendingTurnJumpRef.current = forkTurnId;
       pendingScrollRestoreRef.current = null;
       setOlderTurnsCursor(cursor);
       setItems(collected);
@@ -1635,12 +1642,11 @@ export function App(): React.JSX.Element {
               {visibleItems.map((item) => (
                 <article
                   key={item.id}
-                  className={`message ${item.kind} ${item.kind === "user" && item.turnId === selectedThread?.forkedAtTurnId ? "fork-point" : ""}`}
+                  className={`message ${item.kind} ${item.kind === "user" && item.turnId === forkStartTurnId ? "fork-point" : ""}`}
                   data-user-prompt={item.kind === "user" ? "true" : undefined}
                   data-turn-id={item.turnId}
                 >
-                  {item.kind === "user" &&
-                  item.turnId === selectedThread?.forkedAtTurnId ? (
+                  {item.kind === "user" && item.turnId === forkStartTurnId ? (
                     <div className="fork-point-marker">
                       <span>Fork starts here</span>
                     </div>
@@ -1695,6 +1701,14 @@ export function App(): React.JSX.Element {
           )}
           {showJumpToLatest ? (
             <div className="jump-controls">
+              {selectedThread?.forkedAtTurnId ? (
+                <button
+                  onClick={() => void jumpToForkPoint()}
+                  disabled={loadingOlderTurns}
+                >
+                  {loadingOlderTurns ? "Finding fork point…" : "—○— Fork point"}
+                </button>
+              ) : null}
               <button
                 onClick={() => {
                   const conversation = conversationRef.current;
@@ -1739,14 +1753,6 @@ export function App(): React.JSX.Element {
                   }}
                 >
                   ↓ Next prompt
-                </button>
-              ) : null}
-              {selectedThread?.forkedAtTurnId ? (
-                <button
-                  onClick={() => void jumpToForkPoint()}
-                  disabled={loadingOlderTurns}
-                >
-                  {loadingOlderTurns ? "Finding fork point…" : "↳ Fork point"}
                 </button>
               ) : null}
               <button
