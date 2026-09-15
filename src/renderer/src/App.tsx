@@ -50,6 +50,7 @@ const PINNED_THREADS_KEY = "codex-desktop:pinned-threads";
 const SIDEBAR_WIDTH_KEY = "codex-desktop:sidebar-width";
 const SIDEBAR_COLLAPSED_KEY = "codex-desktop:sidebar-collapsed";
 const COLLAPSED_PROJECTS_KEY = "codex-desktop:collapsed-projects";
+const DRAFT_PREFIX = "codex-desktop:draft:";
 const DEFAULT_SIDEBAR_WIDTH = 286;
 
 function initialThreadId(): string | null {
@@ -81,6 +82,20 @@ function initialTheme(): ThemeMode {
   return stored === "light" || stored === "dark" || stored === "system"
     ? stored
     : "system";
+}
+
+function draftKey(threadId: string | null, cwd: string): string {
+  return threadId ?? `new:${cwd || "no-workspace"}`;
+}
+
+function readDraft(key: string): string {
+  return localStorage.getItem(`${DRAFT_PREFIX}${key}`) ?? "";
+}
+
+function writeDraft(key: string, value: string): void {
+  const storageKey = `${DRAFT_PREFIX}${key}`;
+  if (value) localStorage.setItem(storageKey, value);
+  else localStorage.removeItem(storageKey);
 }
 
 function initialPins(): Set<string> {
@@ -265,7 +280,8 @@ export function App(): React.JSX.Element {
   const [settings, setSettings] = useState<CodexSettings>(defaultSettings);
   const [theme, setTheme] = useState<ThemeMode>(initialTheme);
   const [search, setSearch] = useState("");
-  const [prompt, setPrompt] = useState("");
+  const initialDraftKey = draftKey(null, defaultSettings.cwd);
+  const [prompt, setPrompt] = useState(() => readDraft(initialDraftKey));
   const [attachments, setAttachments] = useState<ImageAttachment[]>([]);
   const [dragging, setDragging] = useState(false);
   const [loadingThread, setLoadingThread] = useState(false);
@@ -301,6 +317,8 @@ export function App(): React.JSX.Element {
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const [showNextPrompt, setShowNextPrompt] = useState(false);
   const activeThreadRef = useRef<string | null>(null);
+  const draftContextRef = useRef(initialDraftKey);
+  const promptValueRef = useRef(prompt);
   const promptRef = useRef<HTMLTextAreaElement | null>(null);
   const conversationRef = useRef<HTMLElement | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -349,6 +367,14 @@ export function App(): React.JSX.Element {
       incoming.forEach((thread) => merged.set(thread.id, thread));
       return [...merged.values()];
     });
+  }, []);
+
+  const switchDraftContext = useCallback((nextKey: string) => {
+    writeDraft(draftContextRef.current, promptValueRef.current);
+    const nextPrompt = readDraft(nextKey);
+    draftContextRef.current = nextKey;
+    promptValueRef.current = nextPrompt;
+    setPrompt(nextPrompt);
   }, []);
 
   const refreshThreads = useCallback(
@@ -503,8 +529,12 @@ export function App(): React.JSX.Element {
           event.threadId === activeThreadRef.current &&
           (event.action === "deleted" ||
             (event.action === "archived" && !archived))
-        )
+        ) {
           clearConversation();
+          switchDraftContext(
+            draftKey(null, localStorage.getItem(LAST_WORKSPACE_KEY) ?? ""),
+          );
+        }
         void refreshThreads(search, archived);
         return;
       }
@@ -547,8 +577,14 @@ export function App(): React.JSX.Element {
       loadUsage,
       refreshThreads,
       search,
+      switchDraftContext,
     ],
   );
+
+  useEffect(() => {
+    promptValueRef.current = prompt;
+    writeDraft(draftContextRef.current, prompt);
+  }, [prompt]);
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -746,6 +782,7 @@ export function App(): React.JSX.Element {
     setShowNextPrompt(false);
     try {
       const result = await window.codex.openThread(thread.id);
+      switchDraftContext(draftKey(result.thread.id, result.thread.cwd));
       activeThreadRef.current = result.thread.id;
       setSelectedThread(result.thread);
       rememberThreads([result.thread]);
@@ -777,6 +814,7 @@ export function App(): React.JSX.Element {
         setShowJumpToLatest(false);
         setShowNextPrompt(false);
         historyPagingEnabledRef.current = false;
+        switchDraftContext(draftKey(result.thread.id, result.thread.cwd));
         activeThreadRef.current = result.thread.id;
         setSelectedThread(result.thread);
         rememberThreads([result.thread]);
@@ -803,6 +841,7 @@ export function App(): React.JSX.Element {
     loadQueuedPrompts,
     pendingThreadFocus,
     rememberThreads,
+    switchDraftContext,
   ]);
 
   const toggleProject = (key: string): void => {
@@ -852,6 +891,7 @@ export function App(): React.JSX.Element {
 
   const newChat = (): void => {
     clearConversation();
+    switchDraftContext(draftKey(null, settings.cwd));
     setAttachments([]);
     setError("");
     stickToBottomRef.current = true;
@@ -864,6 +904,7 @@ export function App(): React.JSX.Element {
     const cwd = await window.codex.chooseWorkspace();
     if (!cwd) return;
     localStorage.setItem(LAST_WORKSPACE_KEY, cwd);
+    if (!selectedThread) switchDraftContext(draftKey(null, cwd));
     setSettings((current) => ({ ...current, cwd }));
   };
 
@@ -991,6 +1032,7 @@ export function App(): React.JSX.Element {
       let thread = selectedThread;
       if (!thread) {
         thread = await window.codex.createThread(settings);
+        switchDraftContext(draftKey(thread.id, thread.cwd));
         activeThreadRef.current = thread.id;
         setSelectedThread(thread);
         await refreshThreads(search, archived);
@@ -1349,7 +1391,10 @@ export function App(): React.JSX.Element {
     const threadId = threadMenu.id;
     void runThreadAction(async () => {
       await window.codex.deleteThread(threadId);
-      if (activeThreadRef.current === threadId) clearConversation();
+      if (activeThreadRef.current === threadId) {
+        clearConversation();
+        switchDraftContext(draftKey(null, settings.cwd));
+      }
       const next = new Set(pinnedThreads);
       next.delete(threadId);
       setPinnedThreads(next);

@@ -55,11 +55,13 @@ export class TranscriptionService {
   constructor(private readonly keyPath: string) {}
 
   status(): TranscriptionStatus {
+    const hasEnvironmentKey = Boolean(process.env.OPENAI_API_KEY);
+    const hasStoredKey = existsSync(this.keyPath);
     return {
-      configured: Boolean(process.env.OPENAI_API_KEY || this.storedKey()),
-      source: process.env.OPENAI_API_KEY
+      configured: hasEnvironmentKey || hasStoredKey,
+      source: hasEnvironmentKey
         ? "environment"
-        : this.storedKey()
+        : hasStoredKey
           ? "keychain"
           : "none",
       model: TRANSCRIPTION_MODEL,
