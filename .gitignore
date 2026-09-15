@@ -6,3 +6,10 @@ coverage/
 *.log
 .DS_Store
 *.tsbuildinfo
+.env
+.env.*
+*.cer
+*.p8
+*.p12
+*.provisionprofile
+electron-builder.env

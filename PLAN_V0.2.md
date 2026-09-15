@@ -161,8 +161,8 @@ Turn the functional MVP into a comfortable daily-driver desktop client. Version 
 
 ## Deferred beyond v0.2
 
-- [ ] Developer ID signing, notarization, and a repeatable distribution pipeline.
-- [ ] Automatic updates with signed release metadata and rollback behavior.
+- [x] Add Developer ID signing, Apple notarization, and a repeatable tag-driven GitHub Actions release pipeline.
+- [x] Add opt-in automatic update checks with signed GitHub release metadata, explicit download/install controls, and active-turn protection.
 - [ ] Remote app-server connections. WebSocket transport is currently experimental and should not be exposed as a normal user option yet.
 - [ ] Multiple simultaneous remote app-server connections.
 - [ ] Plugin marketplace installation or other app-server APIs documented as under development.
