@@ -2,11 +2,18 @@
 
 ## Status
 
-- Release version: `0.3.0`
-- Current development: Intel DMG and ZIP packaged; manual packaged-app validation remains pending.
+- Release version: `0.3.1`
+- Current development: signed and notarized GitHub update release preparation.
 - Planning status: P0 implemented; manual packaged-app validation pending
 - Baseline: the `0.1.1` MVP launches Codex correctly from a packaged Intel macOS app, loads persisted threads, streams conversations, supports approvals and user questions, and provides system/light/dark themes.
 - First real chat through the custom desktop UI confirmed on 11 September 2026.
+
+### v0.3.1 update
+
+- [x] Add in-conversation search from the header and `Command-F`.
+- [x] Highlight all matching messages and the active match.
+- [x] Navigate forward with Enter and backward with Shift-Enter.
+- [x] Back-load older pages before navigating so search covers the full thread.
 
 ## Goal
 
