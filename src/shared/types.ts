@@ -154,6 +154,23 @@ export interface TranscriptionStatus {
   model: string;
 }
 
+export type UpdatePhase =
+  | "disabled"
+  | "idle"
+  | "checking"
+  | "available"
+  | "downloading"
+  | "downloaded"
+  | "current"
+  | "error";
+
+export interface DesktopUpdateStatus {
+  phase: UpdatePhase;
+  version: string | null;
+  percent: number | null;
+  message: string;
+}
+
 export interface DictationAudio {
   bytes: Uint8Array;
   mimeType: string;
@@ -243,6 +260,7 @@ export type UiEvent =
   | { type: "goal"; threadId: string; goal: ThreadGoal | null }
   | { type: "compacted"; threadId: string; turnId: string }
   | { type: "focus-thread"; threadId: string }
+  | { type: "update"; status: DesktopUpdateStatus }
   | { type: "error"; message: string; threadId?: string };
 
 export interface CodexDesktopApi {
@@ -298,6 +316,10 @@ export interface CodexDesktopApi {
   getTranscriptionStatus(): Promise<TranscriptionStatus>;
   setTranscriptionApiKey(apiKey: string): Promise<TranscriptionStatus>;
   transcribeAudio(audio: DictationAudio): Promise<string>;
+  getUpdateStatus(): Promise<DesktopUpdateStatus>;
+  checkForUpdates(): Promise<void>;
+  downloadUpdate(): Promise<void>;
+  installUpdate(): Promise<void>;
   getUsage(): Promise<UsageInfo | null>;
   getDiagnostics(): Promise<CodexDiagnostics>;
   reconnect(): Promise<void>;

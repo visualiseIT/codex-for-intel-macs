@@ -12,6 +12,7 @@ import type {
   CodexDiagnostics,
   CodexSettings,
   ConnectionState,
+  DesktopUpdateStatus,
   ImageAttachment,
   MicrophonePermissionStatus,
   ModelOption,
@@ -305,6 +306,12 @@ export function App(): React.JSX.Element {
       source: "none",
       model: "gpt-transcribe",
     });
+  const [updateStatus, setUpdateStatus] = useState<DesktopUpdateStatus>({
+    phase: "disabled",
+    version: null,
+    percent: null,
+    message: "Updates are unavailable in this build.",
+  });
   const [dictationState, setDictationState] = useState<
     "idle" | "recording" | "transcribing"
   >("idle");
@@ -485,6 +492,10 @@ export function App(): React.JSX.Element {
         setUsage(event.usage);
         return;
       }
+      if (event.type === "update") {
+        setUpdateStatus(event.status);
+        return;
+      }
       if (event.type === "focus-thread") {
         setPendingThreadFocus(event.threadId);
         return;
@@ -629,6 +640,7 @@ export function App(): React.JSX.Element {
       .getNotificationPreferences()
       .then(setNotificationPreferences);
     void window.codex.getTranscriptionStatus().then(setTranscriptionStatus);
+    void window.codex.getUpdateStatus().then(setUpdateStatus);
     void window.codex
       .getMicrophonePermissionStatus()
       .then(setMicrophonePermission);
@@ -2137,6 +2149,8 @@ export function App(): React.JSX.Element {
         <SettingsDialog
           notifications={notificationPreferences}
           transcription={transcriptionStatus}
+          updateStatus={updateStatus}
+          updateBlocked={running}
           theme={theme}
           microphonePermission={microphonePermission}
           onClose={() => setSettingsOpen(false)}
@@ -2157,6 +2171,9 @@ export function App(): React.JSX.Element {
             setTranscriptionStatus(status);
             return status;
           }}
+          onCheckForUpdates={() => window.codex.checkForUpdates()}
+          onDownloadUpdate={() => window.codex.downloadUpdate()}
+          onInstallUpdate={() => window.codex.installUpdate()}
         />
       ) : null}
       {diagnostics ? (

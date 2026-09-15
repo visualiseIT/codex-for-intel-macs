@@ -34,6 +34,7 @@ import {
   notificationForEvent,
 } from "./notifications";
 import { TranscriptionService } from "./transcription";
+import { DesktopUpdater } from "./updater";
 
 const service = new CodexService();
 let mainWindow: BrowserWindow | null = null;
@@ -42,7 +43,9 @@ let notificationPreferences = DEFAULT_NOTIFICATION_PREFERENCES;
 let preferencesPath = "";
 let transcriptionService: TranscriptionService | null = null;
 let attachmentStoragePath = "";
+let desktopUpdater: DesktopUpdater | null = null;
 const shownNotifications = new Set<string>();
+const activeTurns = new Set<string>();
 
 function readNotificationPreferences(): NotificationPreferences {
   if (!preferencesPath || !existsSync(preferencesPath))
@@ -105,6 +108,10 @@ function showTestNotification(): Promise<void> {
 }
 
 function sendEvent(event: UiEvent): void {
+  if (event.type === "turn") {
+    if (event.phase === "started") activeTurns.add(event.turnId);
+    else activeTurns.delete(event.turnId);
+  }
   for (const window of windows)
     if (!window.isDestroyed()) window.webContents.send("codex:event", event);
   const spec = notificationForEvent(
@@ -316,6 +323,12 @@ function registerIpc(): void {
     if (!transcriptionService) throw new Error("Dictation is not ready.");
     return transcriptionService.transcribe(audio);
   });
+  ipcMain.handle("app:get-update-status", () => desktopUpdater?.getStatus());
+  ipcMain.handle("app:check-for-updates", () => desktopUpdater?.check());
+  ipcMain.handle("app:download-update", () => desktopUpdater?.download());
+  ipcMain.handle("app:install-update", () =>
+    desktopUpdater?.install(activeTurns.size > 0),
+  );
 }
 
 function createWindow(initialThreadId?: string): BrowserWindow {
@@ -395,10 +408,14 @@ app.whenReady().then(() => {
     join(userData, "transcription-api-key.enc"),
   );
   attachmentStoragePath = join(userData, "clipboard-images");
+  desktopUpdater = new DesktopUpdater((status) =>
+    sendEvent({ type: "update", status }),
+  );
   registerIpc();
   service.on("event", sendEvent);
   createWindow();
   void service.connect().catch(() => undefined);
+  desktopUpdater.initialize();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

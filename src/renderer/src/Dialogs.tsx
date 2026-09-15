@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type {
   CodexDiagnostics,
+  DesktopUpdateStatus,
   MicrophonePermissionStatus,
   NotificationPreferences,
   PendingInteraction,
@@ -456,6 +457,8 @@ export function GoalDialog({
 export function SettingsDialog({
   notifications,
   transcription,
+  updateStatus,
+  updateBlocked,
   theme,
   microphonePermission,
   onClose,
@@ -465,9 +468,14 @@ export function SettingsDialog({
   onTestNotification,
   onNotificationsChange,
   onApiKeyChange,
+  onCheckForUpdates,
+  onDownloadUpdate,
+  onInstallUpdate,
 }: {
   notifications: NotificationPreferences;
   transcription: TranscriptionStatus;
+  updateStatus: DesktopUpdateStatus;
+  updateBlocked: boolean;
   theme: ThemeMode;
   microphonePermission: MicrophonePermissionStatus;
   onClose: () => void;
@@ -479,6 +487,9 @@ export function SettingsDialog({
     preferences: NotificationPreferences,
   ) => Promise<void>;
   onApiKeyChange: (apiKey: string) => Promise<TranscriptionStatus>;
+  onCheckForUpdates: () => Promise<void>;
+  onDownloadUpdate: () => Promise<void>;
+  onInstallUpdate: () => Promise<void>;
 }): React.JSX.Element {
   const [preferences, setPreferences] = useState(notifications);
   const [status, setStatus] = useState(transcription);
@@ -489,6 +500,21 @@ export function SettingsDialog({
   const [permissionBusy, setPermissionBusy] = useState(false);
   const [notificationMessage, setNotificationMessage] = useState("");
   const [notificationBusy, setNotificationBusy] = useState(false);
+  const [updateBusy, setUpdateBusy] = useState(false);
+
+  const runUpdateAction = async (
+    action: () => Promise<void>,
+  ): Promise<void> => {
+    setUpdateBusy(true);
+    setMessage("");
+    try {
+      await action();
+    } catch (cause) {
+      setMessage(readableError(cause));
+    } finally {
+      setUpdateBusy(false);
+    }
+  };
 
   const savePreferences = async (
     next: NotificationPreferences,
@@ -571,6 +597,43 @@ export function SettingsDialog({
               <option value="dark">Dark</option>
             </select>
           </label>
+        </div>
+        <div className="settings-section">
+          <strong>Updates</strong>
+          <p className="modal-detail">{updateStatus.message}</p>
+          {updateStatus.phase === "available" ? (
+            <button
+              className="ghost-button"
+              disabled={updateBusy}
+              onClick={() => void runUpdateAction(onDownloadUpdate)}
+            >
+              Download version {updateStatus.version}
+            </button>
+          ) : updateStatus.phase === "downloaded" ? (
+            <button
+              className="primary-button"
+              disabled={updateBusy || updateBlocked}
+              onClick={() => void runUpdateAction(onInstallUpdate)}
+              title={
+                updateBlocked ? "Wait for Codex to finish working" : undefined
+              }
+            >
+              Restart and install
+            </button>
+          ) : (
+            <button
+              className="ghost-button"
+              disabled={
+                updateBusy ||
+                updateStatus.phase === "disabled" ||
+                updateStatus.phase === "checking" ||
+                updateStatus.phase === "downloading"
+              }
+              onClick={() => void runUpdateAction(onCheckForUpdates)}
+            >
+              Check for updates
+            </button>
+          )}
         </div>
         <div className="settings-section">
           <strong>Notifications</strong>

@@ -72,7 +72,9 @@ This runs ESLint, TypeScript, unit tests, and a production build.
 npm run package:mac:x64
 ```
 
-Ad-hoc-signed `.dmg` and `.zip` artifacts are written to `release/`. They are intended for use on the Mac that built them, and macOS may still require you to right-click and choose **Open**. Developer ID signing, notarization, and auto-update remain outside the MVP.
+Ad-hoc-signed `.dmg` and `.zip` artifacts are written to `release/`. They are intended for use on the Mac that built them, and macOS may still require you to right-click and choose **Open**.
+
+The desktop client includes a manual-install update flow backed by `electron-updater`: signed release builds check for updates, show download progress in Desktop settings, and install only when the user chooses **Restart and install**. Installation is blocked while a Codex turn is active. The update feed remains disabled until an explicit GitHub Releases owner/repository is embedded during packaging; Developer ID signing and notarization credentials must be supplied outside the repository.
 
 Every distributable rebuild must use a new version number so artifacts and installed builds are unambiguous; never overwrite a previously packaged version.
 

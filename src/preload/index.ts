@@ -95,6 +95,10 @@ const api: CodexDesktopApi = {
     ipcRenderer.invoke("app:set-transcription-api-key", apiKey),
   transcribeAudio: (audio: DictationAudio) =>
     ipcRenderer.invoke("app:transcribe-audio", audio),
+  getUpdateStatus: () => ipcRenderer.invoke("app:get-update-status"),
+  checkForUpdates: () => ipcRenderer.invoke("app:check-for-updates"),
+  downloadUpdate: () => ipcRenderer.invoke("app:download-update"),
+  installUpdate: () => ipcRenderer.invoke("app:install-update"),
   resolveInteraction: (requestId, result) =>
     ipcRenderer.invoke("codex:resolve-interaction", requestId, result),
   onEvent: (listener: (event: UiEvent) => void) => {
