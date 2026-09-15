@@ -32,6 +32,7 @@ import {
   DiagnosticsDialog,
   GoalDialog,
   InteractionDialog,
+  RenameThreadDialog,
   SettingsDialog,
   ThreadActionsDialog,
 } from "./Dialogs";
@@ -253,6 +254,7 @@ export function App(): React.JSX.Element {
     initialStringSet(COLLAPSED_PROJECTS_KEY),
   );
   const [threadMenu, setThreadMenu] = useState<ThreadSummary | null>(null);
+  const [renameTarget, setRenameTarget] = useState<ThreadSummary | null>(null);
   const [models, setModels] = useState<ModelOption[]>([]);
   const [selectedThread, setSelectedThread] = useState<ThreadSummary | null>(
     null,
@@ -1299,13 +1301,23 @@ export function App(): React.JSX.Element {
     }
   };
 
-  const renameThread = (): void => {
+  const openRenameDialog = (): void => {
     if (!threadMenu) return;
-    const name = window.prompt("Conversation name", threadMenu.title)?.trim();
-    if (name)
-      void runThreadAction(() =>
-        window.codex.renameThread(threadMenu.id, name),
-      );
+    setRenameTarget(threadMenu);
+    setThreadMenu(null);
+  };
+
+  const renameThread = async (name: string): Promise<void> => {
+    if (!renameTarget) return;
+    const threadId = renameTarget.id;
+    await window.codex.renameThread(threadId, name);
+    const applyName = (thread: ThreadSummary): ThreadSummary =>
+      thread.id === threadId ? { ...thread, title: name } : thread;
+    setThreads((current) => current.map(applyName));
+    setThreadContext((current) => current.map(applyName));
+    setSelectedThread((current) => (current ? applyName(current) : null));
+    setRenameTarget(null);
+    void refreshThreads(search, archived);
   };
 
   const togglePin = (): void => {
@@ -1512,9 +1524,17 @@ export function App(): React.JSX.Element {
               <span>{shortPath(settings.cwd)}</span>
             </button>
             {selectedThread ? (
-              <span className="conversation-title" title={selectedThread.title}>
-                {selectedThread.title}
-              </span>
+              <button
+                className="conversation-title"
+                title="Rename conversation"
+                aria-label={`Rename ${selectedThread.title}`}
+                onClick={() => setRenameTarget(selectedThread)}
+              >
+                <span>{selectedThread.title}</span>
+                <span className="conversation-title-edit" aria-hidden="true">
+                  ✎
+                </span>
+              </button>
             ) : null}
             {selectedThread?.forkedFromId ? (
               <button
@@ -2023,7 +2043,7 @@ export function App(): React.JSX.Element {
           archived={archived}
           pinned={pinnedThreads.has(threadMenu.id)}
           onClose={() => setThreadMenu(null)}
-          onRename={renameThread}
+          onRename={openRenameDialog}
           onPin={togglePin}
           onArchive={() =>
             void runThreadAction(() =>
@@ -2050,6 +2070,14 @@ export function App(): React.JSX.Element {
               );
             setThreadMenu(null);
           }}
+        />
+      ) : null}
+      {renameTarget ? (
+        <RenameThreadDialog
+          key={renameTarget.id}
+          thread={renameTarget}
+          onClose={() => setRenameTarget(null)}
+          onSave={renameThread}
         />
       ) : null}
       {goalOpen ? (

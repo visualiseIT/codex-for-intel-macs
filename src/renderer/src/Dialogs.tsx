@@ -248,6 +248,84 @@ export function ThreadActionsDialog({
   );
 }
 
+export function RenameThreadDialog({
+  thread,
+  onClose,
+  onSave,
+}: {
+  thread: ThreadSummary;
+  onClose: () => void;
+  onSave: (name: string) => Promise<void>;
+}): React.JSX.Element {
+  const [name, setName] = useState(thread.title);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const save = async (): Promise<void> => {
+    const nextName = name.trim();
+    if (!nextName || nextName === thread.title) {
+      onClose();
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await onSave(nextName);
+    } catch (cause) {
+      setError(readableError(cause));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" onMouseDown={onClose}>
+      <form
+        className="modal rename-thread-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="rename-thread-title"
+        onMouseDown={(event) => event.stopPropagation()}
+        onSubmit={(event) => {
+          event.preventDefault();
+          void save();
+        }}
+      >
+        <span className="eyebrow">Conversation</span>
+        <h2 id="rename-thread-title">Rename conversation</h2>
+        <input
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") onClose();
+          }}
+          maxLength={200}
+          autoFocus
+          disabled={busy}
+          aria-label="Conversation name"
+        />
+        {error ? <p className="rename-thread-error">{error}</p> : null}
+        <div className="modal-actions">
+          <button
+            className="ghost-button"
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+          >
+            Cancel
+          </button>
+          <button
+            className="primary-button"
+            type="submit"
+            disabled={busy || !name.trim()}
+          >
+            {busy ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 export function GoalDialog({
   goal,
   onClose,

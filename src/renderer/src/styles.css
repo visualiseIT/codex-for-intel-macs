@@ -393,13 +393,33 @@ button {
   gap: 5px;
 }
 .conversation-title {
+  display: flex;
   min-width: 0;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
   overflow: hidden;
+  border: 0;
+  border-radius: 6px;
   color: #4d4941;
+  background: transparent;
+  cursor: pointer;
   font-size: 11px;
   font-weight: 650;
+  -webkit-app-region: no-drag;
+}
+.conversation-title > span:first-child {
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.conversation-title:hover {
+  background: #ebe8e0;
+}
+.conversation-title-edit {
+  flex: 0 0 auto;
+  opacity: 0.55;
 }
 .fork-badge,
 .goal-button {
@@ -1116,6 +1136,9 @@ button {
 }
 :root[data-theme="dark"] .conversation-title {
   color: #d2d0c8;
+}
+:root[data-theme="dark"] .conversation-title:hover {
+  background: #292a25;
 }
 :root[data-theme="dark"] .folder-icon,
 :root[data-theme="dark"] .eyebrow,
@@ -1886,6 +1909,28 @@ button {
 .thread-actions-modal h2 {
   overflow-wrap: anywhere;
 }
+.rename-thread-modal {
+  width: min(460px, 100%);
+}
+.rename-thread-modal input {
+  width: 100%;
+  padding: 10px 11px;
+  border: 1px solid #cbc6bb;
+  border-radius: 8px;
+  outline: none;
+  color: #34322d;
+  background: #fffefa;
+  font: inherit;
+}
+.rename-thread-modal input:focus {
+  border-color: #8f8779;
+  box-shadow: 0 0 0 3px #8f877922;
+}
+.rename-thread-error {
+  margin: 8px 0 0;
+  color: #9a453f;
+  font-size: 11px;
+}
 .thread-action-list {
   display: grid;
   gap: 6px;
@@ -2199,6 +2244,11 @@ button {
 }
 :root[data-theme="dark"] .thread-action-list button.danger {
   color: #ef9991;
+}
+:root[data-theme="dark"] .rename-thread-modal input {
+  border-color: #46483f;
+  color: #dedcd3;
+  background: #282924;
 }
 :root[data-theme="dark"] .diagnostics-report {
   border-color: #3e4037;
