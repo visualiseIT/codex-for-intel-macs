@@ -43,6 +43,7 @@ import { firstForkPromptTurnId, prependHistoryItems } from "./history";
 import { RichText } from "./RichText";
 import { isNearBottom, nextPromptOffset, previousPromptOffset } from "./scroll";
 import { ThreadSidebar } from "./ThreadSidebar";
+import { adjacentMatchIndex, matchingMessageIds } from "./thread-search";
 import { buildThreadProjects, mergeThreadSummaries } from "./thread-tree";
 
 const LAST_WORKSPACE_KEY = "codex-desktop:last-workspace";
@@ -323,11 +324,16 @@ export function App(): React.JSX.Element {
   const [error, setError] = useState("");
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const [showNextPrompt, setShowNextPrompt] = useState(false);
+  const [threadSearchOpen, setThreadSearchOpen] = useState(false);
+  const [threadSearchQuery, setThreadSearchQuery] = useState("");
+  const [threadSearchIndex, setThreadSearchIndex] = useState(-1);
+  const [loadingSearchHistory, setLoadingSearchHistory] = useState(false);
   const activeThreadRef = useRef<string | null>(null);
   const draftContextRef = useRef(initialDraftKey);
   const promptValueRef = useRef(prompt);
   const promptRef = useRef<HTMLTextAreaElement | null>(null);
   const conversationRef = useRef<HTMLElement | null>(null);
+  const threadSearchInputRef = useRef<HTMLInputElement | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recordingStreamRef = useRef<MediaStream | null>(null);
   const recordingChunksRef = useRef<Blob[]>([]);
@@ -474,6 +480,9 @@ export function App(): React.JSX.Element {
     setRunning(false);
     setQueuedPrompts([]);
     setGoal(null);
+    setThreadSearchOpen(false);
+    setThreadSearchQuery("");
+    setThreadSearchIndex(-1);
   }, []);
 
   const handleUiEvent = useCallback(
@@ -792,6 +801,9 @@ export function App(): React.JSX.Element {
     stickToBottomRef.current = true;
     setShowJumpToLatest(false);
     setShowNextPrompt(false);
+    setThreadSearchOpen(false);
+    setThreadSearchQuery("");
+    setThreadSearchIndex(-1);
     try {
       const result = await window.codex.openThread(thread.id);
       switchDraftContext(draftKey(result.thread.id, result.thread.cwd));
@@ -825,6 +837,9 @@ export function App(): React.JSX.Element {
         stickToBottomRef.current = true;
         setShowJumpToLatest(false);
         setShowNextPrompt(false);
+        setThreadSearchOpen(false);
+        setThreadSearchQuery("");
+        setThreadSearchIndex(-1);
         historyPagingEnabledRef.current = false;
         switchDraftContext(draftKey(result.thread.id, result.thread.cwd));
         activeThreadRef.current = result.thread.id;
@@ -1438,6 +1453,97 @@ export function App(): React.JSX.Element {
       items.filter((item) => item.kind !== "status" || item.text || item.title),
     [items],
   );
+  const threadSearchMatches = useMemo(
+    () => matchingMessageIds(visibleItems, threadSearchQuery),
+    [threadSearchQuery, visibleItems],
+  );
+  const activeSearchMessageId =
+    threadSearchIndex >= 0
+      ? (threadSearchMatches[threadSearchIndex] ?? null)
+      : null;
+
+  const closeThreadSearch = useCallback((): void => {
+    setThreadSearchOpen(false);
+    setThreadSearchQuery("");
+    setThreadSearchIndex(-1);
+  }, []);
+
+  const openThreadSearch = useCallback((): void => {
+    if (!activeThreadRef.current) return;
+    setThreadSearchOpen(true);
+    window.requestAnimationFrame(() => {
+      threadSearchInputRef.current?.focus();
+      threadSearchInputRef.current?.select();
+    });
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
+        if (!activeThreadRef.current) return;
+        event.preventDefault();
+        openThreadSearch();
+      } else if (event.key === "Escape" && threadSearchOpen) {
+        event.preventDefault();
+        closeThreadSearch();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [closeThreadSearch, openThreadSearch, threadSearchOpen]);
+
+  const scrollToSearchMatch = useCallback((messageId: string): void => {
+    window.requestAnimationFrame(() => {
+      const conversation = conversationRef.current;
+      const target = conversation?.querySelector<HTMLElement>(
+        `[data-message-id="${CSS.escape(messageId)}"]`,
+      );
+      if (!conversation || !target) return;
+      stickToBottomRef.current = false;
+      conversation.scrollTo({
+        top: Math.max(0, target.offsetTop - 60),
+        behavior: "smooth",
+      });
+    });
+  }, []);
+
+  const moveThreadSearch = async (direction: 1 | -1): Promise<void> => {
+    const threadId = activeThreadRef.current;
+    if (!threadId || !threadSearchQuery.trim()) return;
+    let searchedItems = items;
+    let cursor = olderTurnsCursor;
+    if (cursor && !loadingOlderTurnsRef.current) {
+      loadingOlderTurnsRef.current = true;
+      setLoadingOlderTurns(true);
+      setLoadingSearchHistory(true);
+      try {
+        while (cursor) {
+          const page = await window.codex.loadEarlierThreadTurns(
+            threadId,
+            cursor,
+          );
+          if (activeThreadRef.current !== threadId) return;
+          searchedItems = prependHistoryItems(searchedItems, page.items);
+          cursor = page.nextCursor;
+        }
+        setItems(searchedItems);
+        setOlderTurnsCursor(null);
+      } catch (cause) {
+        setError(readableError(cause));
+      } finally {
+        loadingOlderTurnsRef.current = false;
+        setLoadingOlderTurns(false);
+        setLoadingSearchHistory(false);
+      }
+    }
+    const matches = matchingMessageIds(searchedItems, threadSearchQuery);
+    const current = activeSearchMessageId
+      ? matches.indexOf(activeSearchMessageId)
+      : -1;
+    const next = adjacentMatchIndex(matches.length, current, direction);
+    setThreadSearchIndex(next);
+    if (next >= 0) scrollToSearchMatch(matches[next]);
+  };
 
   return (
     <div
@@ -1608,6 +1714,16 @@ export function App(): React.JSX.Element {
             ) : null}
           </div>
           <div className="toolbar-controls">
+            {selectedThread ? (
+              <button
+                className="thread-search-button"
+                onClick={openThreadSearch}
+                aria-label="Search this conversation"
+                title="Search this conversation (⌘F)"
+              >
+                ⌕
+              </button>
+            ) : null}
             {usage?.primary ? (
               <button
                 className={`usage-pill ${usage.reached ? "reached" : ""}`}
@@ -1636,6 +1752,53 @@ export function App(): React.JSX.Element {
             </button>
           </div>
         </header>
+
+        {threadSearchOpen ? (
+          <div className="thread-search-bar" role="search">
+            <span className="thread-search-icon">⌕</span>
+            <input
+              ref={threadSearchInputRef}
+              value={threadSearchQuery}
+              onChange={(event) => {
+                setThreadSearchQuery(event.target.value);
+                setThreadSearchIndex(-1);
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter") return;
+                event.preventDefault();
+                void moveThreadSearch(event.shiftKey ? -1 : 1);
+              }}
+              placeholder="Search this conversation"
+              aria-label="Search this conversation"
+            />
+            <span className="thread-search-count" aria-live="polite">
+              {loadingSearchHistory
+                ? "Loading history…"
+                : threadSearchQuery.trim()
+                  ? `${threadSearchIndex >= 0 ? threadSearchIndex + 1 : 0} of ${threadSearchMatches.length}`
+                  : ""}
+            </span>
+            <button
+              onClick={() => void moveThreadSearch(-1)}
+              disabled={!threadSearchQuery.trim() || loadingSearchHistory}
+              aria-label="Previous match"
+              title="Previous match (Shift+Enter)"
+            >
+              ↑
+            </button>
+            <button
+              onClick={() => void moveThreadSearch(1)}
+              disabled={!threadSearchQuery.trim() || loadingSearchHistory}
+              aria-label="Next match"
+              title="Next match (Enter)"
+            >
+              ↓
+            </button>
+            <button onClick={closeThreadSearch} aria-label="Close search">
+              ×
+            </button>
+          </div>
+        ) : null}
 
         <section
           ref={conversationRef}
@@ -1719,7 +1882,8 @@ export function App(): React.JSX.Element {
               {visibleItems.map((item) => (
                 <article
                   key={item.id}
-                  className={`message ${item.kind} ${item.kind === "user" && item.turnId === forkStartTurnId ? "fork-point" : ""}`}
+                  className={`message ${item.kind} ${threadSearchMatches.includes(item.id) ? "thread-search-match" : ""} ${activeSearchMessageId === item.id ? "thread-search-active" : ""} ${item.kind === "user" && item.turnId === forkStartTurnId ? "fork-point" : ""}`}
+                  data-message-id={item.id}
                   data-user-prompt={item.kind === "user" ? "true" : undefined}
                   data-turn-id={item.turnId}
                 >
