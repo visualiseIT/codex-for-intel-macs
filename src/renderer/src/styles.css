@@ -699,8 +699,14 @@ button {
   text-transform: capitalize;
   white-space: nowrap;
 }
-.fork-turn-button {
+.user-message-actions {
+  display: flex;
   margin-left: auto;
+  align-items: center;
+  gap: 3px;
+  opacity: 0;
+}
+.user-message-actions button {
   padding: 2px 6px;
   border: 0;
   border-radius: 5px;
@@ -708,13 +714,12 @@ button {
   background: transparent;
   cursor: pointer;
   font-size: 9px;
-  opacity: 0;
 }
-.message.user:hover .fork-turn-button,
-.fork-turn-button:focus-visible {
+.message.user:hover .user-message-actions,
+.user-message-actions:focus-within {
   opacity: 1;
 }
-.fork-turn-button:hover {
+.user-message-actions button:hover {
   background: #ebe7de;
 }
 .message-body pre {
@@ -2365,7 +2370,7 @@ button {
   color: #dac49d;
   background: #393329;
 }
-:root[data-theme="dark"] .fork-turn-button:hover,
+:root[data-theme="dark"] .user-message-actions button:hover,
 :root[data-theme="dark"] .queued-prompt {
   color: #b5b4ac;
   background: #292a25;

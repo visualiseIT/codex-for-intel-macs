@@ -1175,6 +1175,27 @@ export function App(): React.JSX.Element {
     }
   };
 
+  const editSubmittedPrompt = (item: ChatItem): void => {
+    if (item.kind !== "user") return;
+    const restoredAttachments = item.images ?? [];
+    if (
+      (prompt.trim() || attachments.length) &&
+      (prompt !== item.text || attachments.length) &&
+      !window.confirm(
+        "Replace the current draft with this previously submitted prompt?",
+      )
+    )
+      return;
+    setPrompt(item.text);
+    setAttachments(restoredAttachments);
+    setError("");
+    window.requestAnimationFrame(() => {
+      const input = promptRef.current;
+      input?.focus();
+      input?.setSelectionRange(item.text.length, item.text.length);
+    });
+  };
+
   const forkConversation = async (
     thread: ThreadSummary,
     lastTurnId?: string,
@@ -1908,17 +1929,30 @@ export function App(): React.JSX.Element {
                           {item.status}
                         </span>
                       ) : null}
-                      {item.kind === "user" && item.turnId && selectedThread ? (
-                        <button
-                          className="fork-turn-button"
-                          disabled={running}
-                          onClick={() =>
-                            void forkConversation(selectedThread, item.turnId)
-                          }
-                          title="Fork this conversation through this prompt"
-                        >
-                          Fork here
-                        </button>
+                      {item.kind === "user" ? (
+                        <div className="user-message-actions">
+                          <button
+                            onClick={() => editSubmittedPrompt(item)}
+                            title="Return this prompt to the composer for editing"
+                            aria-label="Edit and resend this prompt"
+                          >
+                            ✎ Edit and resend
+                          </button>
+                          {item.turnId && selectedThread ? (
+                            <button
+                              disabled={running}
+                              onClick={() =>
+                                void forkConversation(
+                                  selectedThread,
+                                  item.turnId as string,
+                                )
+                              }
+                              title="Fork this conversation through this prompt"
+                            >
+                              Fork here
+                            </button>
+                          ) : null}
+                        </div>
                       ) : null}
                     </div>
                     <MessageContent item={item} />
