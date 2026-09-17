@@ -33,6 +33,10 @@ export class ActiveTurnRegistry {
     return this.byThread.get(threadId) ?? null;
   }
 
+  activeThreadIds(): string[] {
+    return [...this.byThread.keys()];
+  }
+
   hasAny(): boolean {
     return this.turns.size > 0 || this.starting.size > 0;
   }

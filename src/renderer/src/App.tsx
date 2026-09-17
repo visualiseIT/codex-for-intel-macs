@@ -57,6 +57,7 @@ const PINNED_THREADS_KEY = "codex-desktop:pinned-threads";
 const SIDEBAR_WIDTH_KEY = "codex-desktop:sidebar-width";
 const SIDEBAR_COLLAPSED_KEY = "codex-desktop:sidebar-collapsed";
 const COLLAPSED_PROJECTS_KEY = "codex-desktop:collapsed-projects";
+const UNREAD_THREADS_KEY = "codex-desktop:unread-threads";
 const DRAFT_PREFIX = "codex-desktop:draft:";
 const DEFAULT_SIDEBAR_WIDTH = 286;
 
@@ -260,6 +261,7 @@ const AttachmentStrip = memo(function AttachmentStrip({
 });
 
 export function App(): React.JSX.Element {
+  const dedicatedThreadWindow = initialThreadId() !== null;
   const [connection, setConnection] = useState<ConnectionState>("connecting");
   const [connectionMessage, setConnectionMessage] = useState("");
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
@@ -270,7 +272,15 @@ export function App(): React.JSX.Element {
   const [pinnedThreads, setPinnedThreads] = useState<Set<string>>(initialPins);
   const [sidebarWidth, setSidebarWidth] = useState(initialSidebarWidth);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
-    () => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true",
+    () =>
+      dedicatedThreadWindow ||
+      localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true",
+  );
+  const [activeThreadIds, setActiveThreadIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [unreadThreadIds, setUnreadThreadIds] = useState<Set<string>>(() =>
+    initialStringSet(UNREAD_THREADS_KEY),
   );
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(() =>
     initialStringSet(COLLAPSED_PROJECTS_KEY),
@@ -479,6 +489,30 @@ export function App(): React.JSX.Element {
     setGoal(await window.codex.getThreadGoal(threadId));
   }, []);
 
+  const updateUnreadThreads = useCallback(
+    (update: (current: Set<string>) => Set<string>): void => {
+      setUnreadThreadIds((current) => {
+        const next = update(current);
+        localStorage.setItem(UNREAD_THREADS_KEY, JSON.stringify([...next]));
+        return next;
+      });
+    },
+    [],
+  );
+
+  const markThreadRead = useCallback(
+    (threadId: string): void => {
+      updateUnreadThreads((current) => {
+        if (!current.has(threadId)) return current;
+        const next = new Set(current);
+        next.delete(threadId);
+        return next;
+      });
+      void window.codex.markThreadRead(threadId);
+    },
+    [updateUnreadThreads],
+  );
+
   const clearConversation = useCallback(() => {
     activeThreadRef.current = null;
     historyPagingEnabledRef.current = false;
@@ -501,9 +535,14 @@ export function App(): React.JSX.Element {
         setConnection(event.state);
         setConnectionMessage(event.message ?? "");
         if (event.state === "connected") {
+          void window.codex
+            .getActiveThreadIds()
+            .then((ids) => setActiveThreadIds(new Set(ids)));
           void refreshThreads(search, archived);
           void loadModels();
           void loadUsage();
+        } else {
+          setActiveThreadIds(new Set());
         }
         return;
       }
@@ -517,6 +556,15 @@ export function App(): React.JSX.Element {
       }
       if (event.type === "focus-thread") {
         setPendingThreadFocus(event.threadId);
+        return;
+      }
+      if (event.type === "thread-read") {
+        updateUnreadThreads((current) => {
+          if (!current.has(event.threadId)) return current;
+          const next = new Set(current);
+          next.delete(event.threadId);
+          return next;
+        });
         return;
       }
       if (event.type === "queue-changed") {
@@ -574,6 +622,38 @@ export function App(): React.JSX.Element {
         setError(event.message);
         return;
       }
+      if (event.type === "turn") {
+        setActiveThreadIds((current) => {
+          const next = new Set(current);
+          if (event.phase === "started") next.add(event.threadId);
+          else next.delete(event.threadId);
+          return next;
+        });
+        if (event.phase === "started") {
+          updateUnreadThreads((current) => {
+            if (!current.has(event.threadId)) return current;
+            const next = new Set(current);
+            next.delete(event.threadId);
+            return next;
+          });
+        } else if (
+          !event.error &&
+          !/(interrupt|cancel|fail)/i.test(event.status)
+        ) {
+          if (
+            event.threadId === activeThreadRef.current &&
+            document.hasFocus()
+          ) {
+            markThreadRead(event.threadId);
+          } else {
+            updateUnreadThreads((current) => {
+              const next = new Set(current);
+              next.add(event.threadId);
+              return next;
+            });
+          }
+        }
+      }
       if (event.type === "turn" && event.threadId !== activeThreadRef.current)
         return;
       if (event.threadId !== activeThreadRef.current) return;
@@ -608,9 +688,11 @@ export function App(): React.JSX.Element {
       loadModels,
       loadQueuedPrompts,
       loadUsage,
+      markThreadRead,
       refreshThreads,
       search,
       switchDraftContext,
+      updateUnreadThreads,
     ],
   );
 
@@ -640,6 +722,9 @@ export function App(): React.JSX.Element {
       setConnection(result.state);
       setConnectionMessage(result.message ?? "");
       if (result.state === "connected") {
+        void window.codex
+          .getActiveThreadIds()
+          .then((ids) => setActiveThreadIds(new Set(ids)));
         void refreshThreads(search, archived);
         void loadModels();
         void loadUsage();
@@ -806,6 +891,7 @@ export function App(): React.JSX.Element {
       setThreadMenu(thread);
       return;
     }
+    markThreadRead(thread.id);
     setLoadingThread(true);
     setError("");
     activeThreadRef.current = null;
@@ -869,6 +955,7 @@ export function App(): React.JSX.Element {
         const activeTurn = await window.codex.getActiveTurnId(result.thread.id);
         if (activeThreadRef.current !== result.thread.id) return;
         setSelectedThread(result.thread);
+        markThreadRead(result.thread.id);
         setActiveTurnId(activeTurn);
         setRunning(Boolean(activeTurn));
         rememberThreads([result.thread]);
@@ -893,6 +980,7 @@ export function App(): React.JSX.Element {
     enableHistoryPaging,
     loadGoal,
     loadQueuedPrompts,
+    markThreadRead,
     pendingThreadFocus,
     rememberThreads,
     switchDraftContext,
@@ -938,7 +1026,8 @@ export function App(): React.JSX.Element {
 
   const toggleSidebar = (): void => {
     setSidebarCollapsed((current) => {
-      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(!current));
+      if (!dedicatedThreadWindow)
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(!current));
       return !current;
     });
   };
@@ -1712,6 +1801,8 @@ export function App(): React.JSX.Element {
             collapsedProjects={collapsedProjects}
             selectedThreadId={selectedThread?.id ?? null}
             pinnedThreads={pinnedThreads}
+            activeThreadIds={activeThreadIds}
+            unreadThreadIds={unreadThreadIds}
             onToggleProject={toggleProject}
             onOpen={(thread) => void openThread(thread)}
             onToggleStar={toggleStar}

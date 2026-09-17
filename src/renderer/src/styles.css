@@ -1408,6 +1408,38 @@ button {
 .thread-row-wrap.selected .thread-title {
   color: #294d31;
 }
+.thread-row-wrap .thread-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.thread-title-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.thread-activity {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+}
+.thread-activity.active {
+  background: #568d61;
+  box-shadow: 0 0 0 3px rgb(86 141 97 / 16%);
+  animation: thread-activity-pulse 1.4s ease-in-out infinite;
+}
+.thread-activity.unread {
+  background: #b57b33;
+  box-shadow: 0 0 0 2px rgb(181 123 51 / 14%);
+}
+@keyframes thread-activity-pulse {
+  50% {
+    opacity: 0.45;
+    transform: scale(0.82);
+  }
+}
 .thread-row-wrap .thread-row {
   min-width: 0;
   margin: 0;
@@ -2136,6 +2168,14 @@ button {
 }
 :root[data-theme="dark"] .thread-row-wrap.selected .thread-title {
   color: #d9eadb;
+}
+:root[data-theme="dark"] .thread-activity.active {
+  background: #73ad7e;
+  box-shadow: 0 0 0 3px rgb(115 173 126 / 18%);
+}
+:root[data-theme="dark"] .thread-activity.unread {
+  background: #d4a05e;
+  box-shadow: 0 0 0 2px rgb(212 160 94 / 16%);
 }
 :root[data-theme="dark"] .thread-star {
   color: #c7a76e;

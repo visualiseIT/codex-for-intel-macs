@@ -260,6 +260,7 @@ export type UiEvent =
   | { type: "goal"; threadId: string; goal: ThreadGoal | null }
   | { type: "compacted"; threadId: string; turnId: string }
   | { type: "focus-thread"; threadId: string }
+  | { type: "thread-read"; threadId: string }
   | { type: "update"; status: DesktopUpdateStatus }
   | { type: "error"; message: string; threadId?: string };
 
@@ -278,6 +279,8 @@ export interface CodexDesktopApi {
   listModels(): Promise<ModelOption[]>;
   openThread(threadId: string): Promise<OpenThreadResult>;
   getActiveTurnId(threadId: string): Promise<string | null>;
+  getActiveThreadIds(): Promise<string[]>;
+  markThreadRead(threadId: string): Promise<void>;
   loadEarlierThreadTurns(
     threadId: string,
     cursor: string,

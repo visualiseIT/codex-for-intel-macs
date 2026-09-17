@@ -8,6 +8,7 @@ describe("ActiveTurnRegistry", () => {
     registry.startObserved("thread-b", "turn-b");
     expect(registry.activeTurn("thread-a")).toBe("turn-a");
     expect(registry.activeTurn("thread-b")).toBe("turn-b");
+    expect(registry.activeThreadIds()).toEqual(["thread-a", "thread-b"]);
     expect(registry.hasAny()).toBe(true);
   });
 

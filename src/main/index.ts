@@ -211,6 +211,12 @@ function registerIpc(): void {
     (_event, threadId: string): string | null =>
       activeTurns.activeTurn(threadId),
   );
+  ipcMain.handle("codex:get-active-threads", () =>
+    activeTurns.activeThreadIds(),
+  );
+  ipcMain.handle("app:mark-thread-read", (_event, threadId: string) => {
+    if (threadId.trim()) sendEvent({ type: "thread-read", threadId });
+  });
   ipcMain.handle(
     "codex:load-earlier-thread-turns",
     (_event, threadId: string, cursor: string) =>

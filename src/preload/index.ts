@@ -26,6 +26,9 @@ const api: CodexDesktopApi = {
   openThread: (threadId) => ipcRenderer.invoke("codex:open-thread", threadId),
   getActiveTurnId: (threadId) =>
     ipcRenderer.invoke("codex:get-active-turn", threadId),
+  getActiveThreadIds: () => ipcRenderer.invoke("codex:get-active-threads"),
+  markThreadRead: (threadId) =>
+    ipcRenderer.invoke("app:mark-thread-read", threadId),
   loadEarlierThreadTurns: (threadId, cursor) =>
     ipcRenderer.invoke("codex:load-earlier-thread-turns", threadId, cursor),
   getThreadSummaries: (threadIds) =>

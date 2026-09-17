@@ -21,6 +21,8 @@ function TreeRow({
   depth,
   selectedThreadId,
   pinnedThreads,
+  activeThreadIds,
+  unreadThreadIds,
   onOpen,
   onToggleStar,
   onManage,
@@ -29,6 +31,8 @@ function TreeRow({
   depth: number;
   selectedThreadId: string | null;
   pinnedThreads: Set<string>;
+  activeThreadIds: Set<string>;
+  unreadThreadIds: Set<string>;
   onOpen: (thread: ThreadSummary) => void;
   onToggleStar: (thread: ThreadSummary) => void;
   onManage: (thread: ThreadSummary) => void;
@@ -50,9 +54,22 @@ function TreeRow({
         <button className="thread-row" onClick={() => onOpen(node.thread)}>
           <span className="thread-title">
             {depth ? <span className="fork-branch">↳</span> : null}
-            {node.thread.title}
+            <span className="thread-title-text">{node.thread.title}</span>
             {node.children.length ? (
               <span className="fork-count">{node.children.length}</span>
+            ) : null}
+            {activeThreadIds.has(node.thread.id) ? (
+              <span
+                className="thread-activity active"
+                title="Codex is working"
+                aria-label="Codex is working"
+              />
+            ) : unreadThreadIds.has(node.thread.id) ? (
+              <span
+                className="thread-activity unread"
+                title="Unread completed reply"
+                aria-label="Unread completed reply"
+              />
             ) : null}
           </span>
           <span className="thread-meta">
@@ -89,6 +106,8 @@ function TreeRow({
           depth={depth + 1}
           selectedThreadId={selectedThreadId}
           pinnedThreads={pinnedThreads}
+          activeThreadIds={activeThreadIds}
+          unreadThreadIds={unreadThreadIds}
           onOpen={onOpen}
           onToggleStar={onToggleStar}
           onManage={onManage}
@@ -103,6 +122,8 @@ export function ThreadSidebar({
   collapsedProjects,
   selectedThreadId,
   pinnedThreads,
+  activeThreadIds,
+  unreadThreadIds,
   onToggleProject,
   onOpen,
   onToggleStar,
@@ -112,6 +133,8 @@ export function ThreadSidebar({
   collapsedProjects: Set<string>;
   selectedThreadId: string | null;
   pinnedThreads: Set<string>;
+  activeThreadIds: Set<string>;
+  unreadThreadIds: Set<string>;
   onToggleProject: (key: string) => void;
   onOpen: (thread: ThreadSummary) => void;
   onToggleStar: (thread: ThreadSummary) => void;
@@ -141,6 +164,8 @@ export function ThreadSidebar({
                     depth={0}
                     selectedThreadId={selectedThreadId}
                     pinnedThreads={pinnedThreads}
+                    activeThreadIds={activeThreadIds}
+                    unreadThreadIds={unreadThreadIds}
                     onOpen={onOpen}
                     onToggleStar={onToggleStar}
                     onManage={onManage}
