@@ -24,6 +24,7 @@ import type {
   UiEvent,
 } from "../shared/types";
 import { CodexService } from "./codex-service";
+import { ActiveTurnRegistry } from "./active-turns";
 import {
   persistClipboardImages,
   prepareFileReferences,
@@ -45,7 +46,7 @@ let transcriptionService: TranscriptionService | null = null;
 let attachmentStoragePath = "";
 let desktopUpdater: DesktopUpdater | null = null;
 const shownNotifications = new Set<string>();
-const activeTurns = new Set<string>();
+const activeTurns = new ActiveTurnRegistry();
 
 function readNotificationPreferences(): NotificationPreferences {
   if (!preferencesPath || !existsSync(preferencesPath))
@@ -109,8 +110,13 @@ function showTestNotification(): Promise<void> {
 
 function sendEvent(event: UiEvent): void {
   if (event.type === "turn") {
-    if (event.phase === "started") activeTurns.add(event.turnId);
-    else activeTurns.delete(event.turnId);
+    if (event.phase === "started") {
+      activeTurns.startObserved(event.threadId, event.turnId);
+    } else {
+      activeTurns.completionObserved(event.threadId, event.turnId);
+    }
+  } else if (event.type === "connection" && event.state !== "connected") {
+    activeTurns.clear();
   }
   for (const window of windows)
     if (!window.isDestroyed()) window.webContents.send("codex:event", event);
@@ -201,6 +207,11 @@ function registerIpc(): void {
     service.openThread(threadId),
   );
   ipcMain.handle(
+    "codex:get-active-turn",
+    (_event, threadId: string): string | null =>
+      activeTurns.activeTurn(threadId),
+  );
+  ipcMain.handle(
     "codex:load-earlier-thread-turns",
     (_event, threadId: string, cursor: string) =>
       service.loadEarlierThreadTurns(threadId, cursor),
@@ -253,9 +264,18 @@ function registerIpc(): void {
   ipcMain.handle("codex:clear-thread-goal", (_event, threadId: string) =>
     service.clearThreadGoal(threadId),
   );
-  ipcMain.handle("codex:start-turn", (_event, input: StartTurnInput) =>
-    service.startTurn(input),
-  );
+  ipcMain.handle("codex:start-turn", async (_event, input: StartTurnInput) => {
+    if (!activeTurns.beginStart(input.threadId))
+      throw new Error("This conversation already has an active turn.");
+    try {
+      const result = await service.startTurn(input);
+      activeTurns.finishStart(input.threadId, result.turnId);
+      return result;
+    } catch (error) {
+      activeTurns.abandonStart(input.threadId);
+      throw error;
+    }
+  });
   ipcMain.handle("codex:steer-turn", (_event, input: SteerTurnInput) =>
     service.steerTurn(input),
   );
@@ -327,7 +347,7 @@ function registerIpc(): void {
   ipcMain.handle("app:check-for-updates", () => desktopUpdater?.check());
   ipcMain.handle("app:download-update", () => desktopUpdater?.download());
   ipcMain.handle("app:install-update", () =>
-    desktopUpdater?.install(activeTurns.size > 0),
+    desktopUpdater?.install(activeTurns.hasAny()),
   );
 }
 

@@ -277,6 +277,7 @@ export interface CodexDesktopApi {
   listThreads(input?: ThreadListInput): Promise<ThreadPage>;
   listModels(): Promise<ModelOption[]>;
   openThread(threadId: string): Promise<OpenThreadResult>;
+  getActiveTurnId(threadId: string): Promise<string | null>;
   loadEarlierThreadTurns(
     threadId: string,
     cursor: string,

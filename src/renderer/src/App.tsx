@@ -40,6 +40,11 @@ import {
 import { DiffView } from "./DiffView";
 import { readableError } from "./errors";
 import { firstForkPromptTurnId, prependHistoryItems } from "./history";
+import {
+  isReconnectNotice,
+  nextPromptHistoryIndex,
+  submittedPromptHistory,
+} from "./prompt-history";
 import { RichText } from "./RichText";
 import { isNearBottom, nextPromptOffset, previousPromptOffset } from "./scroll";
 import { ThreadSidebar } from "./ThreadSidebar";
@@ -328,6 +333,9 @@ export function App(): React.JSX.Element {
   const [threadSearchQuery, setThreadSearchQuery] = useState("");
   const [threadSearchIndex, setThreadSearchIndex] = useState(-1);
   const [loadingSearchHistory, setLoadingSearchHistory] = useState(false);
+  const [promptHistoryIndex, setPromptHistoryIndex] = useState<number | null>(
+    null,
+  );
   const activeThreadRef = useRef<string | null>(null);
   const draftContextRef = useRef(initialDraftKey);
   const promptValueRef = useRef(prompt);
@@ -349,6 +357,7 @@ export function App(): React.JSX.Element {
   const endRef = useRef<HTMLDivElement | null>(null);
   const requestedParentIdsRef = useRef(new Set<string>());
   const pendingSidebarThreadsRef = useRef(new Map<string, ThreadSummary>());
+  const promptHistoryDraftRef = useRef("");
 
   const selectedModel = models.find((model) => model.id === settings.model);
   const effortOptions = selectedModel?.efforts.length
@@ -483,6 +492,7 @@ export function App(): React.JSX.Element {
     setThreadSearchOpen(false);
     setThreadSearchQuery("");
     setThreadSearchIndex(-1);
+    setPromptHistoryIndex(null);
   }, []);
 
   const handleUiEvent = useCallback(
@@ -559,12 +569,15 @@ export function App(): React.JSX.Element {
         return;
       }
       if (event.type === "error") {
+        if (event.threadId && event.threadId !== activeThreadRef.current)
+          return;
         setError(event.message);
         return;
       }
       if (event.type === "turn" && event.threadId !== activeThreadRef.current)
         return;
       if (event.threadId !== activeThreadRef.current) return;
+      setError((current) => (isReconnectNotice(current) ? "" : current));
       if (event.type === "item") {
         setItems((current) => upsertItem(current, event.item));
       } else if (event.type === "delta") {
@@ -801,6 +814,9 @@ export function App(): React.JSX.Element {
     stickToBottomRef.current = true;
     setShowJumpToLatest(false);
     setShowNextPrompt(false);
+    setRunning(false);
+    setActiveTurnId(null);
+    setPromptHistoryIndex(null);
     setThreadSearchOpen(false);
     setThreadSearchQuery("");
     setThreadSearchIndex(-1);
@@ -808,7 +824,11 @@ export function App(): React.JSX.Element {
       const result = await window.codex.openThread(thread.id);
       switchDraftContext(draftKey(result.thread.id, result.thread.cwd));
       activeThreadRef.current = result.thread.id;
+      const activeTurn = await window.codex.getActiveTurnId(result.thread.id);
+      if (activeThreadRef.current !== result.thread.id) return;
       setSelectedThread(result.thread);
+      setActiveTurnId(activeTurn);
+      setRunning(Boolean(activeTurn));
       rememberThreads([result.thread]);
       setItems(result.items);
       setOlderTurnsCursor(result.nextCursor);
@@ -833,17 +853,24 @@ export function App(): React.JSX.Element {
     if (!pendingThreadFocus || connection !== "connected") return;
     void window.codex
       .openThread(pendingThreadFocus)
-      .then((result) => {
+      .then(async (result) => {
         stickToBottomRef.current = true;
         setShowJumpToLatest(false);
         setShowNextPrompt(false);
         setThreadSearchOpen(false);
         setThreadSearchQuery("");
         setThreadSearchIndex(-1);
+        setRunning(false);
+        setActiveTurnId(null);
+        setPromptHistoryIndex(null);
         historyPagingEnabledRef.current = false;
         switchDraftContext(draftKey(result.thread.id, result.thread.cwd));
         activeThreadRef.current = result.thread.id;
+        const activeTurn = await window.codex.getActiveTurnId(result.thread.id);
+        if (activeThreadRef.current !== result.thread.id) return;
         setSelectedThread(result.thread);
+        setActiveTurnId(activeTurn);
+        setRunning(Boolean(activeTurn));
         rememberThreads([result.thread]);
         setItems(result.items);
         setOlderTurnsCursor(result.nextCursor);
@@ -924,6 +951,7 @@ export function App(): React.JSX.Element {
     stickToBottomRef.current = true;
     setShowJumpToLatest(false);
     setShowNextPrompt(false);
+    setPromptHistoryIndex(null);
     promptRef.current?.focus();
   };
 
@@ -1050,6 +1078,7 @@ export function App(): React.JSX.Element {
     const pendingAttachments = attachments;
     setPrompt("");
     setAttachments([]);
+    setPromptHistoryIndex(null);
     setError("");
     setRunning(true);
     stickToBottomRef.current = true;
@@ -1072,7 +1101,12 @@ export function App(): React.JSX.Element {
       });
       setActiveTurnId(result.turnId);
     } catch (cause) {
-      setRunning(false);
+      const threadId = activeThreadRef.current;
+      const activeTurn = threadId
+        ? await window.codex.getActiveTurnId(threadId).catch(() => null)
+        : null;
+      setActiveTurnId(activeTurn);
+      setRunning(Boolean(activeTurn));
       setError(cause instanceof Error ? cause.message : String(cause));
       setPrompt(text);
       setAttachments(pendingAttachments);
@@ -1091,6 +1125,7 @@ export function App(): React.JSX.Element {
     const pendingAttachments = attachments;
     setPrompt("");
     setAttachments([]);
+    setPromptHistoryIndex(null);
     setError("");
     try {
       await window.codex.steerTurn({
@@ -1113,6 +1148,7 @@ export function App(): React.JSX.Element {
     const pendingAttachments = attachments;
     setPrompt("");
     setAttachments([]);
+    setPromptHistoryIndex(null);
     setError("");
     try {
       const queued = await window.codex.queuePrompt({
@@ -1188,6 +1224,7 @@ export function App(): React.JSX.Element {
       return;
     setPrompt(item.text);
     setAttachments(restoredAttachments);
+    setPromptHistoryIndex(null);
     setError("");
     window.requestAnimationFrame(() => {
       const input = promptRef.current;
@@ -1474,6 +1511,31 @@ export function App(): React.JSX.Element {
       items.filter((item) => item.kind !== "status" || item.text || item.title),
     [items],
   );
+  const submittedPrompts = useMemo(
+    () => submittedPromptHistory(visibleItems),
+    [visibleItems],
+  );
+
+  const movePromptHistory = (direction: 1 | -1): void => {
+    if (attachments.length) return;
+    if (promptHistoryIndex === null) {
+      if (direction === 1 || prompt) return;
+      promptHistoryDraftRef.current = prompt;
+    }
+    const next = nextPromptHistoryIndex(
+      submittedPrompts.length,
+      promptHistoryIndex,
+      direction,
+    );
+    setPromptHistoryIndex(next);
+    const nextPrompt =
+      next === null ? promptHistoryDraftRef.current : submittedPrompts[next];
+    setPrompt(nextPrompt);
+    window.requestAnimationFrame(() => {
+      const input = promptRef.current;
+      input?.setSelectionRange(nextPrompt.length, nextPrompt.length);
+    });
+  };
   const threadSearchMatches = useMemo(
     () => matchingMessageIds(visibleItems, threadSearchQuery),
     [threadSearchQuery, visibleItems],
@@ -2131,7 +2193,10 @@ export function App(): React.JSX.Element {
               <textarea
                 ref={promptRef}
                 value={prompt}
-                onChange={(event) => setPrompt(event.target.value)}
+                onChange={(event) => {
+                  setPrompt(event.target.value);
+                  setPromptHistoryIndex(null);
+                }}
                 onPaste={(event) => {
                   const images = Array.from(event.clipboardData.items)
                     .filter(
@@ -2146,6 +2211,18 @@ export function App(): React.JSX.Element {
                   }
                 }}
                 onKeyDown={(event) => {
+                  if (
+                    !event.metaKey &&
+                    !event.ctrlKey &&
+                    !event.altKey &&
+                    !event.shiftKey &&
+                    (event.key === "ArrowUp" || event.key === "ArrowDown") &&
+                    (promptHistoryIndex !== null || !prompt)
+                  ) {
+                    event.preventDefault();
+                    movePromptHistory(event.key === "ArrowUp" ? -1 : 1);
+                    return;
+                  }
                   if (event.key === "Enter" && !event.shiftKey && !running) {
                     event.preventDefault();
                     void sendPrompt();
