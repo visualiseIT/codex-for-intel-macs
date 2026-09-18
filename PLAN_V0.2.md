@@ -2,7 +2,7 @@
 
 ## Status
 
-- Release version: `0.3.1`
+- Release version: `0.3.2`
 - Current development: signed and notarized GitHub update release preparation.
 - Planning status: P0 implemented; manual packaged-app validation pending
 - Baseline: the `0.1.1` MVP launches Codex correctly from a packaged Intel macOS app, loads persisted threads, streams conversations, supports approvals and user questions, and provides system/light/dark themes.
@@ -14,6 +14,16 @@
 - [x] Highlight all matching messages and the active match.
 - [x] Navigate forward with Enter and backward with Shift-Enter.
 - [x] Back-load older pages before navigating so search covers the full thread.
+
+### v0.3.2 update
+
+- [x] Restore a submitted prompt and its images to the composer for editing and resending.
+- [x] Recall earlier submitted prompts with the keyboard up/down arrows.
+- [x] Track active turns per conversation across multiple windows and prevent competing starts.
+- [x] Collapse the sidebar by default in conversation-only windows.
+- [x] Show working and unread-completion indicators in the sidebar.
+- [x] Clear transient reconnect warnings when activity resumes.
+- [x] Recover empty forks omitted by `thread/list` and synchronize forks and renames across windows.
 
 ## Goal
 

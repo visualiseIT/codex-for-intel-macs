@@ -21,7 +21,7 @@ The repository's built-in `GITHUB_TOKEN` publishes the release; do not create or
 2. Bump `package.json`, `package-lock.json`, and the plan release version.
 3. Run formatting, lint, type checking, tests, the production build, and the App Server smoke test.
 4. Commit the version bump.
-5. Create and push a matching tag such as `v0.3.1`.
+5. Create and push a matching tag such as `v0.3.2`.
 6. Confirm the GitHub Actions release job signs, notarizes, and publishes the DMG, ZIP, blockmaps, and `latest-mac.yml`.
 
 Never place a certificate, private key, Apple credential, GitHub token, or `.env` file in this repository.
