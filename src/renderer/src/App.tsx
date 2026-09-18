@@ -603,6 +603,19 @@ export function App(): React.JSX.Element {
         return;
       }
       if (event.type === "thread-changed") {
+        if (event.thread && event.action === "changed") {
+          pendingSidebarThreadsRef.current.set(event.thread.id, event.thread);
+          setThreads((current) =>
+            mergeThreadSummaries(current, [event.thread as ThreadSummary]),
+          );
+          rememberThreads([event.thread]);
+        }
+        if (event.action === "archived" || event.action === "deleted") {
+          pendingSidebarThreadsRef.current.delete(event.threadId);
+          setThreads((current) =>
+            current.filter((thread) => thread.id !== event.threadId),
+          );
+        }
         if (
           event.threadId === activeThreadRef.current &&
           (event.action === "deleted" ||
@@ -689,6 +702,7 @@ export function App(): React.JSX.Element {
       loadQueuedPrompts,
       loadUsage,
       markThreadRead,
+      rememberThreads,
       refreshThreads,
       search,
       switchDraftContext,

@@ -254,6 +254,7 @@ export type UiEvent =
       type: "thread-changed";
       threadId: string;
       action: "changed" | "archived" | "unarchived" | "deleted";
+      thread?: ThreadSummary;
     }
   | { type: "usage"; usage: UsageInfo | null }
   | { type: "queue-changed"; threadId: string }

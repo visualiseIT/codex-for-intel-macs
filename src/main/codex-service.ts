@@ -35,6 +35,7 @@ import {
   normalizeThread,
   normalizeTurns,
 } from "./normalization";
+import { mergeRecoveredThreads } from "./thread-list";
 
 interface RpcMessage {
   id: number | string;
@@ -196,6 +197,8 @@ export class CodexService extends EventEmitter {
     join(process.env.CODEX_HOME || join(homedir(), ".codex"), "sessions"),
   );
   private readonly runtimeForkMetadata = new Map<string, LegacyForkMetadata>();
+  private readonly recoveredEmptyForks = new Map<string, ThreadSummary>();
+  private recoveredEmptyForksLoad: Promise<void> | null = null;
   private state: ConnectionState = "disconnected";
   private stateMessage: string | undefined;
 
@@ -276,6 +279,36 @@ export class CodexService extends EventEmitter {
     };
   }
 
+  private async recoverEmptyDesktopForks(): Promise<void> {
+    if (this.recoveredEmptyForksLoad) return this.recoveredEmptyForksLoad;
+    this.recoveredEmptyForksLoad = (async () => {
+      const legacy = await this.legacyForkMetadata;
+      const results = await Promise.allSettled(
+        [...legacy.keys()].map((threadId) =>
+          this.process.request<UnknownRecord>("thread/read", {
+            threadId,
+            includeTurns: false,
+          }),
+        ),
+      );
+      for (const result of results) {
+        if (result.status !== "fulfilled") continue;
+        const rawThread = record(result.value.thread);
+        if (
+          rawThread.threadSource !== "codex-desktop-intel" ||
+          string(rawThread.preview)
+        )
+          continue;
+        const thread = normalizeThread(rawThread);
+        this.recoveredEmptyForks.set(
+          thread.id,
+          this.withForkMetadata(thread, legacy),
+        );
+      }
+    })();
+    return this.recoveredEmptyForksLoad;
+  }
+
   async listThreads(input: ThreadListInput = {}): Promise<ThreadPage> {
     const result = await this.process.request<UnknownRecord>("thread/list", {
       limit: 50,
@@ -288,13 +321,23 @@ export class CodexService extends EventEmitter {
     });
     const data = result.data;
     const legacyForkMetadata = await this.legacyForkMetadata;
+    const listed = Array.isArray(data)
+      ? data.map((value) => {
+          const thread = normalizeThread(value);
+          return this.withForkMetadata(thread, legacyForkMetadata);
+        })
+      : [];
+    if (!input.cursor && input.archived !== true)
+      await this.recoverEmptyDesktopForks();
     return {
-      threads: Array.isArray(data)
-        ? data.map((value) => {
-            const thread = normalizeThread(value);
-            return this.withForkMetadata(thread, legacyForkMetadata);
-          })
-        : [],
+      threads:
+        !input.cursor && input.archived !== true
+          ? mergeRecoveredThreads(
+              listed,
+              [...this.recoveredEmptyForks.values()],
+              input.searchTerm,
+            )
+          : listed,
       nextCursor:
         typeof result.nextCursor === "string" ? result.nextCursor : null,
     };
@@ -398,18 +441,30 @@ export class CodexService extends EventEmitter {
 
   async renameThread(threadId: string, name: string): Promise<void> {
     await this.process.request("thread/name/set", { threadId, name });
+    const recovered = this.recoveredEmptyForks.get(threadId);
+    if (recovered)
+      this.recoveredEmptyForks.set(threadId, {
+        ...recovered,
+        title: name,
+        updatedAt: Math.floor(Date.now() / 1_000),
+      });
   }
 
   async archiveThread(threadId: string): Promise<void> {
     await this.process.request("thread/archive", { threadId });
+    this.recoveredEmptyForks.delete(threadId);
   }
 
   async unarchiveThread(threadId: string): Promise<void> {
     await this.process.request("thread/unarchive", { threadId });
+    const [thread] = await this.getThreadSummaries([threadId]);
+    if (thread && !thread.preview)
+      this.recoveredEmptyForks.set(thread.id, thread);
   }
 
   async deleteThread(threadId: string): Promise<void> {
     await this.process.request("thread/delete", { threadId });
+    this.recoveredEmptyForks.delete(threadId);
   }
 
   async forkThread(
@@ -446,7 +501,9 @@ export class CodexService extends EventEmitter {
       parentId: forked.forkedFromId ?? threadId,
       forkedAtTurnId: forked.forkedAtTurnId ?? forkedAtTurnId ?? null,
     });
-    return this.withForkMetadata(forked, new Map());
+    const summary = this.withForkMetadata(forked, new Map());
+    this.recoveredEmptyForks.set(summary.id, summary);
+    return summary;
   }
 
   async compactThread(threadId: string): Promise<void> {

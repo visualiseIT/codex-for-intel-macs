@@ -234,8 +234,16 @@ function registerIpc(): void {
   );
   ipcMain.handle(
     "codex:rename-thread",
-    (_event, threadId: string, name: string) =>
-      service.renameThread(threadId, name),
+    async (_event, threadId: string, name: string) => {
+      await service.renameThread(threadId, name);
+      const [thread] = await service.getThreadSummaries([threadId]);
+      sendEvent({
+        type: "thread-changed",
+        threadId,
+        action: "changed",
+        ...(thread ? { thread } : {}),
+      });
+    },
   );
   ipcMain.handle("codex:archive-thread", (_event, threadId: string) =>
     service.archiveThread(threadId),
@@ -248,8 +256,16 @@ function registerIpc(): void {
   );
   ipcMain.handle(
     "codex:fork-thread",
-    (_event, threadId: string, lastTurnId?: string) =>
-      service.forkThread(threadId, lastTurnId),
+    async (_event, threadId: string, lastTurnId?: string) => {
+      const forked = await service.forkThread(threadId, lastTurnId);
+      sendEvent({
+        type: "thread-changed",
+        threadId: forked.id,
+        action: "changed",
+        thread: forked,
+      });
+      return forked;
+    },
   );
   ipcMain.handle("codex:compact-thread", (_event, threadId: string) =>
     service.compactThread(threadId),
